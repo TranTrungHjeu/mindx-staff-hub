@@ -1,3 +1,4 @@
+import { LmsClient } from "@/lib/lms/client";
 "use client";
 
 import { useEffect, useMemo, useState, useRef } from "react";
