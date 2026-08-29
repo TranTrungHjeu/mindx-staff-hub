@@ -6,6 +6,9 @@ compatibility_flags = ["nodejs_compat"]
 [site]
 bucket = ".open-next/assets"
 
+[build]
+command = "npx opennextjs-cloudflare build"
+
 [vars]
 LMS_BASE_URL = "https://base-api.mindx.edu.vn/"
 LMS_GATEWAY_URL = "https://lms-api.mindx.edu.vn/"
