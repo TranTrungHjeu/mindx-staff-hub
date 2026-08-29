@@ -1,0 +1,165 @@
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   MINDX SUPPORT TOOLS DESIGN SYSTEM — Standalone Schedule Viewer
+   ============================================================ */
+
+:root {
+  /* MindX Brand Primary — Alizarin Crimson #E31F26 */
+  --primary: 358 78% 51%;
+  --primary-foreground: 0 0% 100%;
+
+  --background: 220 20% 98%;
+  --foreground: 240 100% 12%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 240 100% 12%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 100% 12%;
+
+  --secondary: 220 14% 96%;
+  --secondary-foreground: 240 100% 12%;
+
+  --muted: 220 14% 96%;
+  --muted-foreground: 220 10% 46%;
+
+  --accent: 220 14% 96%;
+  --accent-foreground: 240 100% 12%;
+
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 98%;
+
+  --success: 142 71% 45%;
+  --success-foreground: 0 0% 100%;
+
+  --warning: 38 92% 50%;
+  --warning-foreground: 0 0% 100%;
+
+  --info: 199 89% 48%;
+  --info-foreground: 0 0% 100%;
+
+  --border: 220 13% 91%;
+  --input: 220 13% 91%;
+  --ring: 358 78% 51%;
+  --radius: 0.625rem;
+
+  --font-sans: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+.dark {
+  --background: 224 71% 4%;
+  --foreground: 210 20% 98%;
+
+  --card: 224 71% 7%;
+  --card-foreground: 210 20% 98%;
+
+  --popover: 224 71% 7%;
+  --popover-foreground: 210 20% 98%;
+
+  --primary: 358 78% 55%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 215 27.9% 16.9%;
+  --secondary-foreground: 210 20% 98%;
+
+  --muted: 215 27.9% 14%;
+  --muted-foreground: 217.9 10.6% 64.9%;
+
+  --accent: 215 27.9% 16.9%;
+  --accent-foreground: 210 20% 98%;
+
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 210 20% 98%;
+
+  --border: 215 27.9% 16.9%;
+  --input: 215 27.9% 16.9%;
+  --ring: 358 78% 55%;
+}
+
+/* Force Global Font Family Rules */
+html, body, div, span, button, input, select, textarea, table, th, td, p, h1, h2, h3, h4, h5, h6 {
+  font-family: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}
+
+code, kbd, samp, pre, .font-mono {
+  font-family: "JetBrains Mono", monospace !important;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  }
+}
+
+/* MindX Brand Accent Gradient Line */
+.bg-mindx-accent-gradient {
+  background: linear-gradient(90deg, #E31F26 0%, #FF5252 50%, #FF7A00 100%);
+}
+
+/* Custom Scrollbars — Hide vertical scrollbar, keep horizontal scrollbar & mouse wheel scrolling active */
+::-webkit-scrollbar {
+  width: 0px !important; /* Hide vertical scrollbar visually */
+  height: 6px; /* Keep horizontal scrollbar visible */
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.25);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.4);
+}
+
+.no-vertical-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-vertical-scrollbar::-webkit-scrollbar {
+  width: 0px !important;
+  display: none !important;
+}
+
+/* Schedule Event Cards */
+.event-card {
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: hsl(var(--card));
+  border-left: 3px solid hsl(var(--primary));
+  border-top: 1px solid hsl(var(--border) / 0.6);
+  border-right: 1px solid hsl(var(--border) / 0.6);
+  border-bottom: 1px solid hsl(var(--border) / 0.6);
+  transition: all 0.15s ease-in-out;
+}
+
+.event-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px hsl(var(--foreground) / 0.1);
+}
+
+.event-card.teaching-class {
+  background: hsl(var(--primary) / 0.08);
+  border-left-color: hsl(var(--primary));
+  color: hsl(var(--primary));
+}
+
+.event-card.office-hour {
+  background: hsl(var(--warning) / 0.1);
+  border-left-color: hsl(var(--warning));
+  color: hsl(var(--warning-foreground));
+}
