@@ -2,10 +2,12 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "MindX Staff Schedule Viewer",
-  description: "Trang tra cứu lịch giảng dạy độc lập - MindX Technology School",
+  title: "MindX Hub",
+  description: "Hệ thống tra cứu lịch giảng dạy và vận hành - MindX Technology School",
   icons: {
     icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+    apple: "/favicon.ico",
   },
 };
 
@@ -17,6 +19,9 @@ export default function RootLayout({
   return (
     <html lang="vi" className="h-full antialiased" suppressHydrationWarning>
       <head>
+        <link rel="icon" href="/favicon.ico" sizes="any" />
+        <link rel="shortcut icon" href="/favicon.ico" />
+        <link rel="apple-touch-icon" href="/favicon.ico" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
