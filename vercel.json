@@ -1,0 +1,16 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/lms-gateway/:path*",
+      "destination": "https://lms-api.mindx.edu.vn/:path*"
+    },
+    {
+      "source": "/api/lms-base/:path*",
+      "destination": "https://base-api.mindx.edu.vn/:path*"
+    },
+    {
+      "source": "/((?!api/|.*\\..*).*)",
+      "destination": "/index.html"
+    }
+  ]
+}
