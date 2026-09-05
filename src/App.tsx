@@ -40,15 +40,15 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen w-full bg-background text-foreground font-sans overflow-hidden">
-      {/* Collapsible Left Sidebar */}
+    <div className="flex flex-col md:flex-row h-[100dvh] w-full bg-background text-foreground font-sans overflow-hidden">
+      {/* Collapsible Left Sidebar (Desktop) + Top Bar & Drawer (Mobile) */}
       <Sidebar
         currentView={currentView}
         onViewChange={handleViewChange}
       />
 
       {/* Main Workspace Area */}
-      <main className="flex-1 h-screen overflow-hidden">
+      <main className="flex-1 flex flex-col min-h-0 h-full overflow-hidden relative">
         {currentView === "schedules" ? (
           <SchedulesView onSwitchToPayroll={() => handleViewChange("payroll")} />
         ) : (

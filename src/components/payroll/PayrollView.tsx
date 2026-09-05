@@ -314,53 +314,53 @@ export function PayrollView({ onSwitchToSchedules }: PayrollViewProps) {
           </div>
         </div>
           {/* Dynamic KPI Summary Cards Bar */}
-          <div className="bg-card/40 border-b border-border px-4 lg:px-6 py-3.5">
-            <div className="max-w-[1700px] mx-auto grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="p-3.5 rounded-xl bg-card border border-border/80 shadow-2xs hover:border-border transition-all duration-200 cursor-default flex items-center gap-3.5">
-                <div className="h-10 w-10 rounded-xl bg-muted text-foreground flex items-center justify-center font-bold">
-                  <Users className="h-4.5 w-4.5" />
+          <div className="bg-card/40 border-b border-border px-3 sm:px-4 lg:px-6 py-2.5 sm:py-3.5">
+            <div className="max-w-[1700px] mx-auto grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3">
+              <div className="p-2.5 sm:p-3.5 rounded-xl bg-card border border-border/80 shadow-2xs hover:border-border transition-all duration-200 cursor-default flex items-center gap-2.5 sm:gap-3.5 min-w-0">
+                <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-xl bg-muted text-foreground flex items-center justify-center font-bold shrink-0">
+                  <Users className="h-4 w-4 sm:h-4.5 sm:w-4.5" />
                 </div>
-                <div>
-                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] sm:text-[11px] font-semibold text-muted-foreground uppercase tracking-wider truncate">
                     Số GV ({selectedCenter ? selectedCenter : "Tất cả"})
                   </p>
-                  <p className="text-lg font-extrabold font-mono text-foreground">
+                  <p className="text-base sm:text-lg font-extrabold font-mono text-foreground truncate">
                     {filteredStats.totalTeachers} GV
                   </p>
                 </div>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-card border border-border/80 shadow-2xs hover:border-border transition-all duration-200 cursor-default flex items-center gap-3.5">
-                <div className="h-10 w-10 rounded-xl bg-muted text-foreground flex items-center justify-center font-bold">
-                  <Clock className="h-4.5 w-4.5" />
+              <div className="p-2.5 sm:p-3.5 rounded-xl bg-card border border-border/80 shadow-2xs hover:border-border transition-all duration-200 cursor-default flex items-center gap-2.5 sm:gap-3.5 min-w-0">
+                <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-xl bg-muted text-foreground flex items-center justify-center font-bold shrink-0">
+                  <Clock className="h-4 w-4 sm:h-4.5 sm:w-4.5" />
                 </div>
-                <div>
-                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Tổng giờ dạy</p>
-                  <p className="text-lg font-extrabold font-mono text-foreground">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] sm:text-[11px] font-semibold text-muted-foreground uppercase tracking-wider truncate">Tổng giờ dạy</p>
+                  <p className="text-base sm:text-lg font-extrabold font-mono text-foreground truncate">
                     {filteredStats.totalHours.toLocaleString()}h
                   </p>
                 </div>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-card border border-border/80 shadow-2xs hover:border-border transition-all duration-200 cursor-default flex items-center gap-3.5">
-                <div className="h-10 w-10 rounded-xl bg-muted text-foreground flex items-center justify-center font-bold">
-                  <CheckSquare className="h-4.5 w-4.5" />
+              <div className="p-2.5 sm:p-3.5 rounded-xl bg-card border border-border/80 shadow-2xs hover:border-border transition-all duration-200 cursor-default flex items-center gap-2.5 sm:gap-3.5 min-w-0">
+                <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-xl bg-muted text-foreground flex items-center justify-center font-bold shrink-0">
+                  <CheckSquare className="h-4 w-4 sm:h-4.5 sm:w-4.5" />
                 </div>
-                <div>
-                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Trạng Thái Check</p>
-                  <p className="text-sm font-extrabold font-mono text-foreground">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] sm:text-[11px] font-semibold text-muted-foreground uppercase tracking-wider truncate">Trạng Thái Check</p>
+                  <p className="text-xs sm:text-sm font-extrabold font-mono text-foreground truncate">
                     <span className="text-emerald-600 dark:text-emerald-400">Checked: {filteredStats.checkedSessionsTotal}</span> / {filteredStats.totalSessions}
                   </p>
                 </div>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-card border border-border/80 shadow-2xs hover:border-border transition-all duration-200 cursor-default flex items-center gap-3.5">
-                <div className="h-10 w-10 rounded-xl bg-muted text-foreground flex items-center justify-center font-bold">
-                  <Building2 className="h-4.5 w-4.5" />
+              <div className="p-2.5 sm:p-3.5 rounded-xl bg-card border border-border/80 shadow-2xs hover:border-border transition-all duration-200 cursor-default flex items-center gap-2.5 sm:gap-3.5 min-w-0">
+                <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-xl bg-muted text-foreground flex items-center justify-center font-bold shrink-0">
+                  <Building2 className="h-4 w-4 sm:h-4.5 sm:w-4.5" />
                 </div>
-                <div>
-                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Kỳ Công Tháng</p>
-                  <p className="text-sm font-extrabold font-mono text-foreground truncate">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] sm:text-[11px] font-semibold text-muted-foreground uppercase tracking-wider truncate">Kỳ Công Tháng</p>
+                  <p className="text-xs sm:text-sm font-extrabold font-mono text-foreground truncate">
                     {activeFile?.month || "Chưa có file"}
                   </p>
                 </div>
@@ -403,191 +403,303 @@ export function PayrollView({ onSwitchToSchedules }: PayrollViewProps) {
             </div>
           )}
 
-          {/* Main Table */}
-          <div className="flex-1 overflow-auto px-4 lg:px-6 py-4">
-            <div className="max-w-[1700px] mx-auto bg-card rounded-2xl border border-border overflow-hidden shadow-xs">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-muted/70 border-b border-border text-muted-foreground font-bold uppercase tracking-wider">
-                      <th className="p-3.5 w-12 text-center sticky left-0 z-20 bg-muted/90 backdrop-blur-xs border-r border-border">STT</th>
-                      <th className="p-3.5 sticky left-12 z-20 bg-muted/90 backdrop-blur-xs border-r border-border min-w-[220px]">Giảng Viên / Nhân Sự</th>
-                      <th className="p-3.5">Cơ Sở Trực Thuộc</th>
-                      <th className="p-3.5 text-center">Số Ca Dạy</th>
-                      <th className="p-3.5">Phân Bổ Vai Trò (LEC / TA / GK / DT)</th>
-                      <th className="p-3.5 text-right font-mono">Tổng Giờ Dạy</th>
-                      <th className="p-3.5 text-center w-48 min-w-[190px]">Check / Uncheck</th>
-                      <th className="p-3.5 w-10"></th>
-                    </tr>
-                  </thead>
+          {/* Main Table / Mobile Card List */}
+          <div className="flex-1 overflow-auto px-3 sm:px-4 lg:px-6 py-3">
+            <div className="max-w-[1700px] mx-auto space-y-3">
+              {/* Mobile Card List (< md screens) */}
+              <div className="md:hidden space-y-2.5">
+                {isLoading && displayedTeachers.length === 0 ? (
+                  Array.from({ length: 4 }).map((_, skelIdx) => (
+                    <div key={`skel-card-${skelIdx}`} className="p-3.5 rounded-2xl bg-card border border-border animate-pulse space-y-3">
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-xl bg-muted" />
+                        <div className="space-y-1.5 flex-1">
+                          <div className="h-4 w-32 bg-muted rounded" />
+                          <div className="h-3 w-44 bg-muted/60 rounded" />
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : displayedTeachers.length === 0 ? (
+                  <div className="p-8 text-center text-muted-foreground bg-card rounded-2xl border border-border">
+                    <p className="text-xs">Không tìm thấy giảng viên phù hợp.</p>
+                  </div>
+                ) : (
+                  displayedTeachers.map((t, idx) => {
+                    const totalSessionsCount = t.sessions.length;
+                    const checkedSessionsCount = t.sessions.filter((s) => checkedSessionMap[s.id]).length;
+                    const isFullyChecked = totalSessionsCount > 0 && checkedSessionsCount === totalSessionsCount;
+                    const isPartiallyChecked = checkedSessionsCount > 0 && checkedSessionsCount < totalSessionsCount;
 
-                  <tbody className={`divide-y divide-border/60 transition-all duration-300 ${isLoading && displayedTeachers.length > 0 ? "opacity-50 pointer-events-none" : "opacity-100"}`}>
-                    {isLoading && displayedTeachers.length === 0 ? (
-                      Array.from({ length: 6 }).map((_, skelIdx) => (
-                        <tr key={`skel-${skelIdx}`} className="animate-pulse border-b border-border/40">
-                          <td className="p-3.5 text-center sticky left-0 z-10 bg-card border-r border-border">
-                            <div className="h-4 w-6 bg-muted/80 rounded-md mx-auto" />
-                          </td>
-                          <td className="p-3.5 sticky left-12 z-10 bg-card border-r border-border">
-                            <div className="space-y-2">
-                              <div className="h-4 w-36 bg-muted/90 rounded-md" />
-                              <div className="h-3 w-48 bg-muted/50 rounded-md" />
+                    return (
+                      <div
+                        key={t.id || idx}
+                        onClick={() => setSelectedTeacher(t)}
+                        className="p-3.5 rounded-2xl bg-card border border-border/90 shadow-2xs hover:border-primary/40 transition-all space-y-2.5 cursor-pointer active:scale-[0.99]"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="h-9 w-9 rounded-xl bg-primary/10 text-primary border border-primary/20 flex items-center justify-center font-black text-sm shrink-0 font-mono">
+                              {t.name.charAt(0).toUpperCase()}
                             </div>
-                          </td>
-                          <td className="p-3.5">
-                            <div className="h-4 w-20 bg-muted/70 rounded-md" />
-                          </td>
-                          <td className="p-3.5 text-center">
-                            <div className="h-4 w-12 bg-muted/70 rounded-md mx-auto" />
-                          </td>
-                          <td className="p-3.5">
-                            <div className="flex gap-1.5">
-                              <div className="h-5 w-14 bg-muted/80 rounded-md" />
-                              <div className="h-5 w-14 bg-muted/80 rounded-md" />
-                            </div>
-                          </td>
-                          <td className="p-3.5 text-right">
-                            <div className="h-4 w-12 bg-muted/90 rounded-md ml-auto" />
-                          </td>
-                          <td className="p-3.5 text-center">
-                            <div className="h-6 w-32 bg-muted/80 rounded-lg mx-auto" />
-                          </td>
-                          <td className="p-3.5">
-                            <div className="h-4 w-4 bg-muted/60 rounded-md mx-auto" />
-                          </td>
-                        </tr>
-                      ))
-                    ) : displayedTeachers.length === 0 ? (
-                      <tr>
-                        <td colSpan={8} className="p-16 text-center text-muted-foreground">
-                          <div className="max-w-md mx-auto flex flex-col items-center justify-center space-y-3">
-                            <div className="h-12 w-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center font-bold">
-                              <Cloud className="h-6 w-6" />
-                            </div>
-                            <div className="space-y-1">
-                              <h3 className="text-sm font-bold text-foreground">
-                                {activeFile ? `Chưa có dữ liệu công (${activeFile.month})` : "Chưa có file công lương"}
-                              </h3>
-                              <p className="text-xs text-muted-foreground">
-                                {!activeFile
-                                  ? "Bấm nút Upload File để chọn Tháng/Năm và tải file Excel công lương giảng viên lên hệ thống."
-                                  : payrollData?.teachers?.length === 0
-                                  ? `Dữ liệu ${activeFile.month} hiện chưa có thông tin.`
-                                  : `Không tìm thấy giảng viên phù hợp bộ lọc (Cơ sở: ${selectedCenter || "Tất cả"}).`}
+                            <div className="min-w-0">
+                              <h4 className="font-bold text-xs text-foreground truncate">{t.name}</h4>
+                              <p className="text-[10.5px] text-muted-foreground font-mono truncate">
+                                {t.email || t.username || "Chưa cập nhật email"}
                               </p>
                             </div>
-                            <Button
-                              size="sm"
-                              onClick={() => setIsR2ModalOpen(true)}
-                              className="mt-2 text-xs font-bold gap-1.5 bg-primary text-white rounded-xl shadow-xs hover:bg-primary/90"
-                            >
-                              <Cloud className="h-4 w-4" />
-                              <span>Upload File Công Mới</span>
-                            </Button>
                           </div>
-                        </td>
-                      </tr>
-                    ) : (
-                      displayedTeachers.map((t, idx) => {
-                        const totalSessionsCount = t.sessions.length;
-                        const checkedSessionsCount = t.sessions.filter((s) => checkedSessionMap[s.id]).length;
-                        const isFullyChecked = totalSessionsCount > 0 && checkedSessionsCount === totalSessionsCount;
-                        const isPartiallyChecked = checkedSessionsCount > 0 && checkedSessionsCount < totalSessionsCount;
 
-                        return (
-                          <tr
-                            key={t.id || idx}
-                            onClick={() => setSelectedTeacher(t)}
-                            className="hover:bg-primary/5 transition-colors cursor-pointer group"
-                          >
-                            <td className="p-3.5 text-center font-mono font-bold text-muted-foreground sticky left-0 z-10 bg-card group-hover:bg-primary/5 transition-colors border-r border-border">
-                              {idx + 1}
-                            </td>
+                          <span className="px-2 py-0.5 rounded-md bg-muted/80 text-foreground font-semibold text-[10.5px] border border-border/60 shrink-0">
+                            {t.center}
+                          </span>
+                        </div>
 
-                            <td className="p-3.5 sticky left-12 z-10 bg-card group-hover:bg-primary/5 transition-colors border-r border-border min-w-[220px]">
-                              <div className="flex items-center gap-3">
-                                <div className="h-8 w-8 rounded-lg bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200 border border-border flex items-center justify-center font-bold text-xs shrink-0 font-mono">
-                                  {t.name.charAt(0).toUpperCase()}
-                                </div>
-                                <div>
-                                  <p className="font-bold text-foreground group-hover:text-primary transition-colors">
-                                    {t.name}
-                                  </p>
-                                  <p className="text-[10.5px] text-muted-foreground font-mono">
-                                    {t.email || t.username || "Chưa cập nhật email"}
-                                  </p>
-                                </div>
-                              </div>
-                            </td>
-
-                            <td className="p-3.5">
-                              <span className="px-2.5 py-1 rounded-lg bg-muted/60 text-foreground font-semibold text-[11px] border border-border/60">
-                                {t.center}
-                              </span>
-                            </td>
-
-                            <td className="p-3.5 text-center font-mono font-bold text-foreground">
-                              {t.totalSessions} ca
-                            </td>
-
-                            <td className="p-3.5">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                {Object.entries(t.roles).map(([r, hours]) => (
-                                  <span
-                                    key={r}
-                                    className="px-2 py-0.5 rounded-md text-[10.5px] font-semibold font-mono bg-muted/80 text-foreground border border-border/70"
-                                  >
-                                    {r}: {hours}h
-                                  </span>
-                                ))}
-                              </div>
-                            </td>
-
-                            <td className="p-3.5 text-right font-mono font-bold text-sm text-foreground">
-                              {t.totalHours}h
-                            </td>
-
-                            <td className="p-3.5 text-center">
-                              <button
-                                type="button"
-                                onClick={(e) => toggleAllTeacherSessions(t, e)}
-                                title="Click để Check/Uncheck tất cả ca dạy của giảng viên này"
-                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-semibold transition-all duration-200 border shadow-2xs active:scale-95 cursor-pointer group/btn ${
-                                  isFullyChecked
-                                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25 hover:bg-emerald-500/20"
-                                    : isPartiallyChecked
-                                    ? "bg-amber-500/10 text-amber-800 dark:text-amber-200 border-amber-500/25 hover:bg-amber-500/20"
-                                    : "bg-muted/50 text-muted-foreground border-border/80 hover:bg-muted hover:text-foreground"
-                                }`}
+                        {/* Hours & Role Badges */}
+                        <div className="flex items-center justify-between text-xs pt-1 border-t border-border/50">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {Object.entries(t.roles).map(([r, hours]) => (
+                              <span
+                                key={r}
+                                className="px-2 py-0.5 rounded-md text-[10px] font-bold font-mono bg-muted text-foreground border border-border/60"
                               >
-                                {isFullyChecked ? (
-                                  <>
-                                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 group-hover/btn:scale-110 transition-transform duration-200" />
-                                    <span>Checked ({checkedSessionsCount}/{totalSessionsCount})</span>
-                                  </>
-                                ) : isPartiallyChecked ? (
-                                  <>
-                                    <Clock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0 group-hover/btn:scale-110 transition-transform duration-200" />
-                                    <span>Checked ({checkedSessionsCount}/{totalSessionsCount})</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Circle className="h-3.5 w-3.5 opacity-40 shrink-0 group-hover/btn:scale-110 transition-transform duration-200" />
-                                    <span>Unchecked (0/{totalSessionsCount})</span>
-                                  </>
-                                )}
-                              </button>
-                            </td>
+                                {r}: {hours}h
+                              </span>
+                            ))}
+                          </div>
 
+                          <div className="text-right shrink-0">
+                            <span className="text-sm font-extrabold font-mono text-foreground">{t.totalHours}h</span>
+                            <span className="text-[10px] text-muted-foreground block font-mono">({t.totalSessions} ca)</span>
+                          </div>
+                        </div>
+
+                        {/* Bottom Actions Row */}
+                        <div className="flex items-center justify-between gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={(e) => toggleAllTeacherSessions(t, e)}
+                            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all border ${
+                              isFullyChecked
+                                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                                : isPartiallyChecked
+                                ? "bg-amber-500/10 text-amber-800 dark:text-amber-200 border-amber-500/30"
+                                : "bg-muted text-muted-foreground border-border"
+                            }`}
+                          >
+                            {isFullyChecked ? (
+                              <>
+                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                                <span>Checked ({checkedSessionsCount}/{totalSessionsCount})</span>
+                              </>
+                            ) : isPartiallyChecked ? (
+                              <>
+                                <Clock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                                <span>Checked ({checkedSessionsCount}/{totalSessionsCount})</span>
+                              </>
+                            ) : (
+                              <>
+                                <Circle className="h-3.5 w-3.5 opacity-50" />
+                                <span>Unchecked (0/{totalSessionsCount})</span>
+                              </>
+                            )}
+                          </button>
+
+                          <div className="h-8 w-8 rounded-xl bg-muted flex items-center justify-center text-muted-foreground shrink-0">
+                            <ChevronRight className="h-4 w-4" />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Desktop Table View (>= md screens) */}
+              <div className="hidden md:block bg-card rounded-2xl border border-border overflow-hidden shadow-xs">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-muted/70 border-b border-border text-muted-foreground font-bold uppercase tracking-wider">
+                        <th className="p-3.5 w-12 text-center sticky left-0 z-20 bg-muted/90 backdrop-blur-xs border-r border-border">STT</th>
+                        <th className="p-3.5 sticky left-12 z-20 bg-muted/90 backdrop-blur-xs border-r border-border min-w-[200px] max-w-[240px]">Giảng Viên / Nhân Sự</th>
+                        <th className="p-3.5">Cơ Sở Trực Thuộc</th>
+                        <th className="p-3.5 text-center">Số Ca Dạy</th>
+                        <th className="p-3.5">Phân Bổ Vai Trò (LEC / TA / GK / DT)</th>
+                        <th className="p-3.5 text-right font-mono">Tổng Giờ Dạy</th>
+                        <th className="p-3.5 text-center w-48 min-w-[190px]">Check / Uncheck</th>
+                        <th className="p-3.5 w-10"></th>
+                      </tr>
+                    </thead>
+
+                    <tbody className={`divide-y divide-border/60 transition-all duration-300 ${isLoading && displayedTeachers.length > 0 ? "opacity-50 pointer-events-none" : "opacity-100"}`}>
+                      {isLoading && displayedTeachers.length === 0 ? (
+                        Array.from({ length: 6 }).map((_, skelIdx) => (
+                          <tr key={`skel-${skelIdx}`} className="animate-pulse border-b border-border/40">
+                            <td className="p-3.5 text-center sticky left-0 z-10 bg-card border-r border-border">
+                              <div className="h-4 w-6 bg-muted/80 rounded-md mx-auto" />
+                            </td>
+                            <td className="p-3.5 sticky left-12 z-10 bg-card border-r border-border">
+                              <div className="space-y-2">
+                                <div className="h-4 w-36 bg-muted/90 rounded-md" />
+                                <div className="h-3 w-48 bg-muted/50 rounded-md" />
+                              </div>
+                            </td>
+                            <td className="p-3.5">
+                              <div className="h-4 w-20 bg-muted/70 rounded-md" />
+                            </td>
                             <td className="p-3.5 text-center">
-                              <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all duration-200" />
+                              <div className="h-4 w-12 bg-muted/70 rounded-md mx-auto" />
+                            </td>
+                            <td className="p-3.5">
+                              <div className="flex gap-1.5">
+                                <div className="h-5 w-14 bg-muted/80 rounded-md" />
+                                <div className="h-5 w-14 bg-muted/80 rounded-md" />
+                              </div>
+                            </td>
+                            <td className="p-3.5 text-right">
+                              <div className="h-4 w-12 bg-muted/90 rounded-md ml-auto" />
+                            </td>
+                            <td className="p-3.5 text-center">
+                              <div className="h-6 w-32 bg-muted/80 rounded-lg mx-auto" />
+                            </td>
+                            <td className="p-3.5">
+                              <div className="h-4 w-4 bg-muted/60 rounded-md mx-auto" />
                             </td>
                           </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
+                        ))
+                      ) : displayedTeachers.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="p-16 text-center text-muted-foreground">
+                            <div className="max-w-md mx-auto flex flex-col items-center justify-center space-y-3">
+                              <div className="h-12 w-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center font-bold">
+                                <Cloud className="h-6 w-6" />
+                              </div>
+                              <div className="space-y-1">
+                                <h3 className="text-sm font-bold text-foreground">
+                                  {activeFile ? `Chưa có dữ liệu công (${activeFile.month})` : "Chưa có file công lương"}
+                                </h3>
+                                <p className="text-xs text-muted-foreground">
+                                  {!activeFile
+                                    ? "Bấm nút Upload File để chọn Tháng/Năm và tải file Excel công lương giảng viên lên hệ thống."
+                                    : payrollData?.teachers?.length === 0
+                                    ? `Dữ liệu ${activeFile.month} hiện chưa có thông tin.`
+                                    : `Không tìm thấy giảng viên phù hợp bộ lọc (Cơ sở: ${selectedCenter || "Tất cả"}).`}
+                                </p>
+                              </div>
+                              <Button
+                                size="sm"
+                                onClick={() => setIsR2ModalOpen(true)}
+                                className="mt-2 text-xs font-bold gap-1.5 bg-primary text-white rounded-xl shadow-xs hover:bg-primary/90"
+                              >
+                                <Cloud className="h-4 w-4" />
+                                <span>Upload File Công Mới</span>
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (
+                        displayedTeachers.map((t, idx) => {
+                          const totalSessionsCount = t.sessions.length;
+                          const checkedSessionsCount = t.sessions.filter((s) => checkedSessionMap[s.id]).length;
+                          const isFullyChecked = totalSessionsCount > 0 && checkedSessionsCount === totalSessionsCount;
+                          const isPartiallyChecked = checkedSessionsCount > 0 && checkedSessionsCount < totalSessionsCount;
+
+                          return (
+                            <tr
+                              key={t.id || idx}
+                              onClick={() => setSelectedTeacher(t)}
+                              className="hover:bg-primary/5 transition-colors cursor-pointer group"
+                            >
+                              <td className="p-3.5 text-center font-mono font-bold text-muted-foreground sticky left-0 z-10 bg-card group-hover:bg-primary/5 transition-colors border-r border-border">
+                                {idx + 1}
+                              </td>
+
+                              <td className="p-3.5 sticky left-12 z-10 bg-card group-hover:bg-primary/5 transition-colors border-r border-border min-w-[200px] max-w-[240px]">
+                                <div className="flex items-center gap-3">
+                                  <div className="h-8 w-8 rounded-lg bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200 border border-border flex items-center justify-center font-bold text-xs shrink-0 font-mono">
+                                    {t.name.charAt(0).toUpperCase()}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="font-bold text-foreground group-hover:text-primary transition-colors truncate">
+                                      {t.name}
+                                    </p>
+                                    <p className="text-[10.5px] text-muted-foreground font-mono truncate">
+                                      {t.email || t.username || "Chưa cập nhật email"}
+                                    </p>
+                                  </div>
+                                </div>
+                              </td>
+
+                              <td className="p-3.5">
+                                <span className="px-2.5 py-1 rounded-lg bg-muted/60 text-foreground font-semibold text-[11px] border border-border/60">
+                                  {t.center}
+                                </span>
+                              </td>
+
+                              <td className="p-3.5 text-center font-mono font-bold text-foreground">
+                                {t.totalSessions} ca
+                              </td>
+
+                              <td className="p-3.5">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {Object.entries(t.roles).map(([r, hours]) => (
+                                    <span
+                                      key={r}
+                                      className="px-2 py-0.5 rounded-md text-[10.5px] font-semibold font-mono bg-muted/80 text-foreground border border-border/70"
+                                    >
+                                      {r}: {hours}h
+                                    </span>
+                                  ))}
+                                </div>
+                              </td>
+
+                              <td className="p-3.5 text-right font-mono font-bold text-sm text-foreground">
+                                {t.totalHours}h
+                              </td>
+
+                              <td className="p-3.5 text-center">
+                                <button
+                                  type="button"
+                                  onClick={(e) => toggleAllTeacherSessions(t, e)}
+                                  title="Click để Check/Uncheck tất cả ca dạy của giảng viên này"
+                                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-semibold transition-all duration-200 border shadow-2xs active:scale-95 cursor-pointer group/btn ${
+                                    isFullyChecked
+                                      ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25 hover:bg-emerald-500/20"
+                                      : isPartiallyChecked
+                                      ? "bg-amber-500/10 text-amber-800 dark:text-amber-200 border-amber-500/25 hover:bg-amber-500/20"
+                                      : "bg-muted/50 text-muted-foreground border-border/80 hover:bg-muted hover:text-foreground"
+                                  }`}
+                                >
+                                  {isFullyChecked ? (
+                                    <>
+                                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 group-hover/btn:scale-110 transition-transform duration-200" />
+                                      <span>Checked ({checkedSessionsCount}/{totalSessionsCount})</span>
+                                    </>
+                                  ) : isPartiallyChecked ? (
+                                    <>
+                                      <Clock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0 group-hover/btn:scale-110 transition-transform duration-200" />
+                                      <span>Checked ({checkedSessionsCount}/{totalSessionsCount})</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Circle className="h-3.5 w-3.5 opacity-40 shrink-0 group-hover/btn:scale-110 transition-transform duration-200" />
+                                      <span>Unchecked (0/{totalSessionsCount})</span>
+                                    </>
+                                  )}
+                                </button>
+                              </td>
+
+                              <td className="p-3.5 text-center">
+                                <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all duration-200" />
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </div>

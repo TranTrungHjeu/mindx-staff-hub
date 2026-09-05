@@ -39,7 +39,7 @@ export function PayrollSecurityDialog({ isOpen, onUnlock }: PayrollSecurityDialo
 
   return (
     <Dialog open={isOpen} onOpenChange={() => {}}>
-      <DialogContent className="sm:max-w-[420px] p-6 rounded-2xl border-border bg-card shadow-2xl animate-in zoom-in-95 duration-200">
+      <DialogContent className="w-[92vw] sm:max-w-[420px] p-5 sm:p-6 rounded-2xl border-border bg-card shadow-2xl animate-in zoom-in-95 duration-200">
         <DialogHeader className="text-center space-y-2 flex flex-col items-center">
           <div className="h-12 w-12 rounded-2xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center shadow-glow mb-1">
             <ShieldCheck className="h-6 w-6" />

@@ -110,7 +110,7 @@ export function R2ManagerModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(val) => !val && onClose()}>
-      <DialogContent className="max-w-xl rounded-2xl p-0 overflow-hidden bg-card border-border shadow-2xl">
+      <DialogContent className="w-[95vw] sm:max-w-xl rounded-2xl p-0 overflow-hidden bg-card border-border shadow-2xl">
         {/* Top Header */}
         <div className="p-4 bg-muted/80 backdrop-blur-md border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-3">

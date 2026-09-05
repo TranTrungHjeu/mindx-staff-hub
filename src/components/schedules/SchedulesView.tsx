@@ -8,6 +8,9 @@ import {
   Clock,
   RotateCcw,
   Building2,
+  SlidersHorizontal,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -276,6 +279,65 @@ export function SchedulesView({ onSwitchToPayroll }: SchedulesViewProps) {
       });
   }, [centerSchedules, selectedTeacherForPanel]);
 
+  const teacherTotalHours = useMemo(() => {
+    let totalMinutes = 0;
+    teacherSchedulesList.forEach((sch) => {
+      if (sch.startTime && sch.endTime) {
+        try {
+          const start = new Date(sch.startTime);
+          const end = new Date(sch.endTime);
+          const diffMs = end.getTime() - start.getTime();
+          if (diffMs > 0) totalMinutes += diffMs / (1000 * 60);
+        } catch {
+          // Ignore invalid date format
+        }
+      }
+    });
+    const h = Math.floor(totalMinutes / 60);
+    const m = Math.round(totalMinutes % 60);
+    return m > 0 ? `${h}h${m}m` : `${h}h`;
+  }, [teacherSchedulesList]);
+
+  const [teacherPanelDayFilter, setTeacherPanelDayFilter] = useState<string>("all");
+
+  const groupedAgendaSchedules = useMemo(() => {
+    if (!selectedTeacherForPanel) return [];
+
+    const filtered = teacherSchedulesList.filter((sch) => {
+      if (teacherPanelDayFilter === "all") return true;
+      const schDateStr = getLocalDate(sch);
+      if (!schDateStr) return false;
+      const dObj = new Date(schDateStr);
+      const mapDay: Record<string, number> = { CN: 0, T2: 1, T3: 2, T4: 3, T5: 4, T6: 5, T7: 6 };
+      return mapDay[teacherPanelDayFilter] === dObj.getDay();
+    });
+
+    const groupsMap = new Map<
+      string,
+      { dateStr: string; fullDateStr: string; dayName: string; isToday: boolean; schedules: Schedule[] }
+    >();
+
+    filtered.forEach((sch) => {
+      const fullDateStr = getLocalDate(sch);
+      if (!fullDateStr) return;
+      if (!groupsMap.has(fullDateStr)) {
+        try {
+          const dObj = new Date(fullDateStr);
+          const days = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
+          const dayName = days[dObj.getDay()] || "";
+          const dateStr = format(dObj, "dd/MM/yyyy");
+          const isToday = isSameDay(dObj, new Date());
+          groupsMap.set(fullDateStr, { dateStr, fullDateStr, dayName, isToday, schedules: [] });
+        } catch {
+          groupsMap.set(fullDateStr, { dateStr: fullDateStr, fullDateStr, dayName: "", isToday: false, schedules: [] });
+        }
+      }
+      groupsMap.get(fullDateStr)?.schedules.push(sch);
+    });
+
+    return Array.from(groupsMap.values()).sort((a, b) => a.fullDateStr.localeCompare(b.fullDateStr));
+  }, [selectedTeacherForPanel, teacherSchedulesList, teacherPanelDayFilter]);
+
   const weekDaysList = useMemo(() => {
     const mon = startOfWeek(selectedDate, { weekStartsOn: 1 });
     return Array.from({ length: 7 }, (_, i) => {
@@ -432,10 +494,29 @@ export function SchedulesView({ onSwitchToPayroll }: SchedulesViewProps) {
 
   const weekStr = `${format(startOfWeek(selectedDate, { weekStartsOn: 1 }), "dd/MM/yy")} - ${format(endOfWeek(selectedDate, { weekStartsOn: 1 }), "dd/MM/yy")}`;
 
+  const [dayFilter, setDayFilter] = useState<string>("all");
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState<boolean>(false);
+
+  const activeScheduleFiltersCount =
+    (dayFilter !== "all" ? 1 : 0) +
+    (hideTeachersWithoutSchedules ? 1 : 0) +
+    (hideSuspendedClasses ? 1 : 0);
+
+  const filteredSlotsByDay = useMemo(() => {
+    if (dayFilter === "all") return displayedSlots;
+    return displayedSlots.filter((slotKey) => {
+      const [dateStr] = slotKey.split("_");
+      const dObj = new Date(dateStr);
+      const dayIdx = dObj.getDay(); // 0 = CN, 1 = T2 ...
+      const mapDay: Record<string, number> = { CN: 0, T2: 1, T3: 2, T4: 3, T5: 4, T6: 5, T7: 6 };
+      return mapDay[dayFilter] === dayIdx;
+    });
+  }, [displayedSlots, dayFilter]);
+
   return (
-    <div className="p-3 sm:p-6 space-y-4 h-[calc(100vh-20px)] overflow-hidden flex flex-col bg-background text-foreground font-sans">
+    <div className="p-2 sm:p-4 space-y-2 h-full flex flex-col bg-background text-foreground font-sans overflow-hidden relative">
       {/* MindX Top Loading / Brand Line */}
-      <div className="h-[3px] w-full bg-muted/40 shrink-0 rounded-full overflow-hidden relative">
+      <div className="h-[2.5px] w-full bg-muted/40 shrink-0 rounded-full overflow-hidden relative">
         <div
           className={`h-full w-full bg-mindx-accent-gradient rounded-full ${
             isLoading ? "animate-top-loader" : "transition-all duration-300"
@@ -443,18 +524,20 @@ export function SchedulesView({ onSwitchToPayroll }: SchedulesViewProps) {
         />
       </div>
 
-      {/* Control Toolbar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 shrink-0">
-        <div className="flex flex-wrap items-center gap-2.5">
-          <span className="text-sm font-bold text-foreground min-w-[130px]">
+      {/* Control Toolbar Panel */}
+      <div className="flex flex-col gap-1.5 shrink-0 mx-auto w-full max-w-[1700px]">
+        {/* Primary Row (Always Visible) */}
+        <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 mx-auto w-full">
+          <span className="text-xs font-bold text-foreground min-w-[110px] text-center">
             {isLoading ? "Đang tải..." : `Tuần: ${weekStr}`}
           </span>
 
-          <div className="flex items-center bg-card border border-border rounded-lg shadow-xs h-9 justify-between">
+          {/* Week Date Picker */}
+          <div className="flex items-center bg-card border border-border rounded-lg shadow-xs h-8 justify-between shrink-0">
             <Button
               variant="ghost"
               size="icon"
-              className="h-full w-8 text-muted-foreground hover:text-primary rounded-none rounded-l-lg"
+              className="h-full w-7 text-muted-foreground hover:text-primary rounded-none rounded-l-lg"
               onClick={() => setSelectedDate(addDays(selectedDate, -7))}
             >
               <ChevronLeft className="h-3.5 w-3.5" />
@@ -463,7 +546,7 @@ export function SchedulesView({ onSwitchToPayroll }: SchedulesViewProps) {
             <div className="relative h-full border-x border-border flex items-center" ref={datePickerRef}>
               <div
                 onClick={() => setIsDatePickerOpen(!isDatePickerOpen)}
-                className={`flex items-center justify-center gap-1.5 px-3 h-full hover:bg-muted/50 transition-colors cursor-pointer select-none text-[11px] font-bold text-foreground ${
+                className={`flex items-center justify-center gap-1.5 px-2.5 h-full hover:bg-muted/50 transition-colors cursor-pointer select-none text-[11px] font-bold text-foreground ${
                   isDatePickerOpen ? "bg-muted/50 ring-1 ring-primary/20" : ""
                 }`}
               >
@@ -485,7 +568,7 @@ export function SchedulesView({ onSwitchToPayroll }: SchedulesViewProps) {
             <Button
               variant="ghost"
               size="icon"
-              className="h-full w-8 text-muted-foreground hover:text-primary rounded-none"
+              className="h-full w-7 text-muted-foreground hover:text-primary rounded-none"
               onClick={() => setSelectedDate(addDays(selectedDate, 7))}
             >
               <ChevronRight className="h-3.5 w-3.5" />
@@ -501,63 +584,135 @@ export function SchedulesView({ onSwitchToPayroll }: SchedulesViewProps) {
               </Button>
             </div>
           </div>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Legend Color Indicator */}
-          <div className="hidden lg:flex items-center gap-1.5 text-[10.5px] font-semibold text-muted-foreground border-r border-border pr-2">
-            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-l-3 border-l-[#000056] dark:border-l-blue-400">
-              Thường
-            </span>
-            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-950 dark:text-amber-100 border-l-3 border-l-amber-500">
-              <span className="px-1 bg-amber-600 text-white rounded-xs text-[8px] font-black">CP1/2</span>
-            </span>
-            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-950 dark:text-emerald-100 border-l-3 border-l-emerald-500">
-              <span className="px-1 bg-emerald-600 text-white rounded-xs text-[8px] font-black">Demo</span>
-            </span>
-          </div>
-          <Button
-            onClick={() => fetchSchedulesForDate(selectedDate)}
-            disabled={isLoading}
-            size="sm"
-            variant="outline"
-            className="h-9 gap-1.5 shadow-2xs"
-          >
-            <RotateCcw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin text-primary" : ""}`} />
-            <span className="hidden sm:inline">Làm mới</span>
-          </Button>
-
-          <Button
-            variant={hideTeachersWithoutSchedules ? "secondary" : "outline"}
-            size="sm"
-            className="h-9 text-xs font-semibold gap-1.5 shadow-2xs"
-            onClick={() => setHideTeachersWithoutSchedules(!hideTeachersWithoutSchedules)}
-          >
-            <Filter className="h-3.5 w-3.5 text-primary" />
-            <span>GV ({displayedTeachers.length}/{teachersList.length})</span>
-          </Button>
-
-          <Button
-            variant={hideSuspendedClasses ? "secondary" : "outline"}
-            size="sm"
-            className={`h-9 text-xs font-semibold gap-1.5 shadow-2xs ${hideSuspendedClasses ? "text-rose-600 bg-rose-500/10 border-rose-300" : ""}`}
-            onClick={() => setHideSuspendedClasses(!hideSuspendedClasses)}
-          >
-            <Filter className="h-3.5 w-3.5 text-rose-500" />
-            <span>{hideSuspendedClasses ? "Ẩn Tạm Ngưng" : "Hiện Tạm Ngưng"}</span>
-          </Button>
-
-          <div className="relative w-full sm:w-48 lg:w-64">
+          {/* Search Bar */}
+          <div className="relative flex-1 min-w-[130px] max-w-xs">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <Input
               type="text"
               placeholder="Tìm theo tên/mã GV..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 h-9 text-xs rounded-lg bg-card"
+              className="pl-8 h-8 text-xs rounded-lg bg-card border-border/80"
             />
           </div>
+
+          {/* Toggle Filter Button */}
+          <Button
+            variant={isFilterPanelOpen ? "secondary" : activeScheduleFiltersCount > 0 ? "default" : "outline"}
+            size="sm"
+            onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
+            className={`h-8 px-2.5 gap-1.5 text-xs font-bold rounded-lg border-border shrink-0 transition-all shadow-2xs active:scale-95 ${
+              activeScheduleFiltersCount > 0 && !isFilterPanelOpen
+                ? "bg-primary text-white hover:bg-primary/90 shadow-xs"
+                : ""
+            }`}
+            title={isFilterPanelOpen ? "Ẩn bộ lọc lịch để tăng diện tích hiển thị" : "Mở rộng bộ lọc lịch"}
+          >
+            <SlidersHorizontal
+              className={`h-3.5 w-3.5 ${
+                activeScheduleFiltersCount > 0 && !isFilterPanelOpen ? "text-white" : "text-primary"
+              }`}
+            />
+            <span className="hidden sm:inline">{isFilterPanelOpen ? "Ẩn Bộ Lọc" : "Bộ Lọc"}</span>
+            {activeScheduleFiltersCount > 0 && (
+              <span
+                className={`h-3.5 min-w-[14px] px-1 rounded-full text-[9px] font-mono font-black flex items-center justify-center ${
+                  activeScheduleFiltersCount > 0 && !isFilterPanelOpen
+                    ? "bg-white text-primary shadow-2xs"
+                    : "bg-primary text-white"
+                }`}
+              >
+                {activeScheduleFiltersCount}
+              </span>
+            )}
+            {isFilterPanelOpen ? (
+              <ChevronUp
+                className={`h-3.5 w-3.5 ${
+                  activeScheduleFiltersCount > 0 && !isFilterPanelOpen ? "text-white" : "text-muted-foreground"
+                }`}
+              />
+            ) : (
+              <ChevronDown
+                className={`h-3.5 w-3.5 ${
+                  activeScheduleFiltersCount > 0 && !isFilterPanelOpen ? "text-white" : "text-muted-foreground"
+                }`}
+              />
+            )}
+          </Button>
+
+          {/* Refresh Button */}
+          <Button
+            onClick={() => fetchSchedulesForDate(selectedDate)}
+            disabled={isLoading}
+            size="sm"
+            variant="outline"
+            className="h-8 px-2.5 gap-1.5 text-xs font-semibold shadow-2xs rounded-lg shrink-0"
+          >
+            <RotateCcw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin text-primary" : ""}`} />
+            <span className="hidden sm:inline">Làm mới</span>
+          </Button>
         </div>
+
+        {/* Collapsible Secondary Filter Panel */}
+        {isFilterPanelOpen && (
+          <div className="pt-2 border-t border-border/60 flex flex-wrap items-center justify-center gap-2 mx-auto w-full animate-in fade-in slide-in-from-top-1 duration-200">
+            {/* Quick Day Filter Pills */}
+            <div className="flex items-center justify-center gap-1 overflow-x-auto py-0.5 no-scrollbar">
+              {["all", "T2", "T3", "T4", "T5", "T6", "T7", "CN"].map((dayKey) => (
+                <button
+                  key={dayKey}
+                  type="button"
+                  onClick={() => setDayFilter(dayKey)}
+                  className={`px-2.5 py-1 rounded-lg text-[10.5px] font-bold transition-all ${
+                    dayFilter === dayKey
+                      ? "bg-primary text-white shadow-2xs"
+                      : "bg-muted/70 text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {dayKey === "all" ? "Tất cả các ngày" : dayKey}
+                </button>
+              ))}
+            </div>
+
+            {/* Legend Color Indicator */}
+            <div className="hidden lg:flex items-center gap-1.5 text-[10.5px] font-semibold text-muted-foreground border-l border-r border-border px-2">
+              <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-l-3 border-l-[#000056] dark:border-l-blue-400">
+                Thường
+              </span>
+              <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-950 dark:text-amber-100 border-l-3 border-l-amber-500">
+                <span className="px-1 bg-amber-600 text-white rounded-xs text-[8px] font-black">CP1/2</span>
+              </span>
+              <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-950 dark:text-emerald-100 border-l-3 border-l-emerald-500">
+                <span className="px-1 bg-emerald-600 text-white rounded-xs text-[8px] font-black">Demo</span>
+              </span>
+            </div>
+
+            {/* Teacher Filter Toggle */}
+            <Button
+              variant={hideTeachersWithoutSchedules ? "secondary" : "outline"}
+              size="sm"
+              className="h-8 text-xs font-semibold gap-1.5 rounded-lg shadow-2xs shrink-0"
+              onClick={() => setHideTeachersWithoutSchedules(!hideTeachersWithoutSchedules)}
+            >
+              <Filter className="h-3.5 w-3.5 text-primary" />
+              <span>GV ({displayedTeachers.length}/{teachersList.length})</span>
+            </Button>
+
+            {/* Hide Suspended Toggle */}
+            <Button
+              variant={hideSuspendedClasses ? "secondary" : "outline"}
+              size="sm"
+              className={`h-8 text-xs font-semibold gap-1.5 rounded-lg shadow-2xs shrink-0 ${
+                hideSuspendedClasses ? "text-rose-600 bg-rose-500/10 border-rose-300" : ""
+              }`}
+              onClick={() => setHideSuspendedClasses(!hideSuspendedClasses)}
+            >
+              <Filter className="h-3.5 w-3.5 text-rose-500" />
+              <span>{hideSuspendedClasses ? "Ẩn Tạm Ngưng" : "Hiện Tạm Ngưng"}</span>
+            </Button>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -571,163 +726,315 @@ export function SchedulesView({ onSwitchToPayroll }: SchedulesViewProps) {
 
       {/* Main Schedule Matrix */}
       <div className="flex-1 border border-border rounded-xl bg-card overflow-hidden flex flex-col shadow-xs relative">
-        {/* Teacher Schedule Overlay Panel (Dạng Lịch Tuần 7 ngày trượt đè lên View Lịch) */}
+        {/* Teacher Schedule Overlay Panel (Hiển thị đè toàn màn hình view lịch) */}
         {selectedTeacherForPanel && (
-          <div className="absolute inset-0 z-30 bg-card flex flex-col animate-in slide-in-from-right duration-300 overflow-hidden">
-            {/* Panel Top Toolbar */}
-            <div className="p-3 sm:p-4 bg-muted/80 backdrop-blur-xs border-b border-border flex flex-wrap items-center justify-between gap-3 shrink-0">
-              <div className="flex items-center gap-3">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setSelectedTeacherForPanel(null)}
-                  className="h-8 gap-1.5 text-xs font-bold shadow-2xs hover:bg-primary/10 hover:text-primary hover:border-primary/30"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  <span>Quay lại lịch chung</span>
-                </Button>
-
-                <div className="h-5 w-px bg-border hidden sm:block" />
-
+          <div className="absolute inset-0 z-40 bg-background flex flex-col animate-in slide-in-from-right duration-200 overflow-hidden">
+            {/* Panel Top Header & Identity Toolbar */}
+            <div className="p-2 sm:p-3 bg-card border-b border-border flex flex-col gap-2 shrink-0 shadow-2xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2.5">
-                  <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center font-black text-sm text-white shadow-2xs">
-                    {selectedTeacherForPanel.fullName.charAt(0)}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedTeacherForPanel(null);
+                      setTeacherPanelDayFilter("all");
+                    }}
+                    className="h-8 px-2.5 gap-1 text-xs font-bold rounded-lg border-border hover:bg-muted shadow-2xs active:scale-95 transition-all"
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5 text-primary" />
+                    <span>Quay lại</span>
+                  </Button>
+
+                  <div className="h-5 w-px bg-border hidden sm:block" />
+
+                  <div className="flex items-center gap-2">
+                    <div className="h-8 w-8 sm:h-8 sm:w-8 rounded-lg bg-gradient-to-br from-[#000056] to-blue-600 text-white font-black text-xs flex items-center justify-center shadow-xs ring-1 ring-primary/20 shrink-0">
+                      {selectedTeacherForPanel.fullName.charAt(0)}
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                        <span>{selectedTeacherForPanel.fullName}</span>
+                        <span className="text-[9px] font-mono px-1.5 py-0.2 rounded font-bold bg-primary/10 text-primary border border-primary/20">
+                          {selectedTeacherForPanel.code}
+                        </span>
+                      </h3>
+                      <p className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                        <Calendar className="h-3 w-3 text-primary shrink-0" />
+                        <span>Lịch tuần ({weekStr})</span>
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-xs sm:text-sm font-bold text-foreground flex items-center gap-2">
-                      <span>{selectedTeacherForPanel.fullName}</span>
-                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-muted-foreground/15 text-muted-foreground">
-                        {selectedTeacherForPanel.code}
-                      </span>
-                    </h3>
-                    <p className="text-[10.5px] text-muted-foreground">
-                      Lịch cá nhân tuần ({format(startOfWeek(selectedDate, { weekStartsOn: 1 }), "dd/MM")} - {format(endOfWeek(selectedDate, { weekStartsOn: 1 }), "dd/MM/yyyy")})
-                    </p>
+                </div>
+
+                {/* KPI Metrics Cards */}
+                <div className="flex items-center gap-1 text-[11px] font-bold flex-wrap">
+                  <div className="px-2 py-1 rounded-lg bg-background border border-border/80 flex items-center gap-1 shadow-2xs">
+                    <span className="text-muted-foreground font-semibold text-[10px]">Tổng:</span>
+                    <span className="font-mono text-foreground font-black">{teacherSchedulesList.length}</span>
+                  </div>
+                  <div className="px-2 py-1 rounded-lg bg-primary/5 border border-primary/20 flex items-center gap-1 shadow-2xs">
+                    <span className="text-muted-foreground font-semibold text-[10px]">GV:</span>
+                    <span className="font-mono text-primary font-black">
+                      {teacherSchedulesList.filter(s => (s.teacherRole || "").toUpperCase().includes("GV") || (s.teacherRole || "").toUpperCase().includes("LEC")).length}
+                    </span>
+                  </div>
+                  <div className="px-2 py-1 rounded-lg bg-amber-500/5 border border-amber-500/20 flex items-center gap-1 shadow-2xs">
+                    <span className="text-muted-foreground font-semibold text-[10px]">TG:</span>
+                    <span className="font-mono text-amber-600 dark:text-amber-400 font-black">
+                      {teacherSchedulesList.filter(s => (s.teacherRole || "").toUpperCase().includes("TG") || (s.teacherRole || "").toUpperCase().includes("TA")).length}
+                    </span>
+                  </div>
+                  <div className="px-2 py-1 rounded-lg bg-purple-500/5 border border-purple-500/20 flex items-center gap-1 shadow-2xs">
+                    <span className="text-muted-foreground font-semibold text-[10px]">Trực:</span>
+                    <span className="font-mono text-purple-600 dark:text-purple-400 font-black">
+                      {teacherSchedulesList.filter(s => s.type === "OFFICE_HOURS").length}
+                    </span>
+                  </div>
+                  <div className="px-2 py-1 rounded-lg bg-emerald-500/5 border border-emerald-500/20 flex items-center gap-1 shadow-2xs">
+                    <Clock className="h-3 w-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span className="font-mono text-emerald-600 dark:text-emerald-400 font-black">{teacherTotalHours}</span>
                   </div>
                 </div>
               </div>
 
-              {/* KPI Badges */}
-              <div className="flex items-center gap-1.5 text-[11px] font-bold">
-                <div className="px-2.5 py-1 rounded-lg bg-background border border-border/80 flex items-center gap-1.5 shadow-2xs">
-                  <span className="text-muted-foreground font-semibold">Tổng ca:</span>
-                  <span className="font-mono text-foreground font-black">{teacherSchedulesList.length}</span>
-                </div>
-                <div className="px-2.5 py-1 rounded-lg bg-background border border-border/80 flex items-center gap-1.5 shadow-2xs">
-                  <span className="text-muted-foreground font-semibold">GV:</span>
-                  <span className="font-mono text-primary font-black">
-                    {teacherSchedulesList.filter(s => (s.teacherRole || "").toUpperCase().includes("GV") || (s.teacherRole || "").toUpperCase().includes("LEC")).length}
-                  </span>
-                </div>
-                <div className="px-2.5 py-1 rounded-lg bg-background border border-border/80 flex items-center gap-1.5 shadow-2xs">
-                  <span className="text-muted-foreground font-semibold">TG:</span>
-                  <span className="font-mono text-amber-600 dark:text-amber-400 font-black">
-                    {teacherSchedulesList.filter(s => (s.teacherRole || "").toUpperCase().includes("TG") || (s.teacherRole || "").toUpperCase().includes("TA")).length}
-                  </span>
-                </div>
-                <div className="px-2.5 py-1 rounded-lg bg-background border border-border/80 flex items-center gap-1.5 shadow-2xs">
-                  <span className="text-muted-foreground font-semibold">Trực:</span>
-                  <span className="font-mono text-purple-600 dark:text-purple-400 font-black">
-                    {teacherSchedulesList.filter(s => s.type === "OFFICE_HOURS").length}
-                  </span>
-                </div>
+              {/* Quick Day Selector Pills */}
+              <div className="flex items-center justify-start sm:justify-center gap-1 overflow-x-auto py-0.5 border-t border-border/50 no-scrollbar">
+                {["all", "T2", "T3", "T4", "T5", "T6", "T7", "CN"].map((dayKey) => (
+                  <button
+                    key={dayKey}
+                    type="button"
+                    onClick={() => setTeacherPanelDayFilter(dayKey)}
+                    className={`px-2 py-0.5 rounded-md text-[10.5px] font-bold transition-all shrink-0 ${
+                      teacherPanelDayFilter === dayKey
+                        ? "bg-primary text-white shadow-2xs"
+                        : "bg-muted/70 text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {dayKey === "all" ? "Tất cả các ngày" : dayKey}
+                  </button>
+                ))}
               </div>
             </div>
 
-            {/* 7-Day Matrix Table View for Teacher */}
-            <div className="flex-1 overflow-auto p-3 bg-muted/20">
-              <div className="grid grid-cols-1 md:grid-cols-7 gap-2.5 h-full min-w-[750px]">
-                {weekDaysList.map((d) => {
-                  const daySchedules = teacherSchedulesList.filter((sch) => {
-                    const schDateStr = getLocalDate(sch);
-                    return schDateStr === d.fullDateStr;
-                  });
-
-                  return (
-                    <div
-                      key={d.fullDateStr}
-                      className={`flex flex-col rounded-xl border border-border/80 bg-card overflow-hidden shadow-2xs ${
-                        d.isToday ? "ring-2 ring-primary/40 border-primary/50" : ""
-                      }`}
-                    >
-                      {/* Day Column Header */}
-                      <div
-                        className={`p-2 text-center border-b border-border/60 font-bold text-xs shrink-0 ${
-                          d.isToday ? "bg-primary/15 text-primary" : "bg-muted/50 text-foreground"
-                        }`}
-                      >
-                        <div>{d.dayName} - {d.dateStr}</div>
-                        <div className="text-[9.5px] text-muted-foreground font-semibold mt-0.5">
-                          {daySchedules.length} ca
+            {/* Adaptive Content Body (Mobile: Agenda Timeline List | Desktop: 7-Day Matrix Grid) */}
+            <div className="flex-1 overflow-y-auto bg-muted/20">
+              {/* Mobile Timeline Agenda (< md) */}
+              <div className="block md:hidden p-2.5 space-y-2.5">
+                {groupedAgendaSchedules.length === 0 ? (
+                  <div className="h-48 flex flex-col items-center justify-center text-center p-6 bg-card rounded-xl border border-border shadow-xs">
+                    <Calendar className="h-8 w-8 text-muted-foreground/40 mb-2" />
+                    <p className="text-xs font-bold text-foreground">Không có ca dạy nào</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">Giảng viên không có ca dạy nào trong điều kiện lọc đã chọn.</p>
+                  </div>
+                ) : (
+                  groupedAgendaSchedules.map((group) => (
+                    <div key={group.fullDateStr} className="bg-card border border-border/80 rounded-xl shadow-xs overflow-hidden">
+                      {/* Group Header */}
+                      <div className={`px-3 py-1.5 flex items-center justify-between border-b font-bold text-xs ${
+                        group.isToday
+                          ? "bg-primary text-white border-primary"
+                          : "bg-muted/80 border-border/70 text-foreground"
+                      }`}>
+                        <div className="flex items-center gap-1.5">
+                          <Calendar className="h-3.5 w-3.5 shrink-0" />
+                          <span>{group.dayName} — {group.dateStr}</span>
+                          {group.isToday && (
+                            <span className="px-1.5 py-0.2 rounded-full text-[8.5px] font-black uppercase bg-white/20 text-white tracking-wider">
+                              Hôm nay
+                            </span>
+                          )}
                         </div>
+                        <span className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-mono font-black ${
+                          group.isToday ? "bg-white/20 text-white" : "bg-primary/10 text-primary border border-primary/20"
+                        }`}>
+                          {group.schedules.length} ca
+                        </span>
                       </div>
 
-                      {/* Day Schedules List */}
-                      <div className="p-1.5 space-y-1.5 flex-1 overflow-y-auto no-vertical-scrollbar">
-                        {daySchedules.length === 0 ? (
-                          <div className="h-full min-h-[120px] flex items-center justify-center text-muted-foreground/50 text-[11px] font-medium italic">
-                            Không có lịch
-                          </div>
-                        ) : (
-                          daySchedules.map((sch) => {
-                            const isClass = sch.type === "CLASS_SESSION";
-                            const className = sch.classSite?.class?.name || sch.title || "Lịch dạy";
-                            const centreName = sch.classSite?.centre?.name || sch.officeHour?.centre?.name || "MindX";
-                            const total = sch.totalSessions || 14;
-                            const sIdx = sch.sessionIndex || 1;
-                            const examType = isClass ? getSessionExamType(className, sch.title, sch.description, sIdx, total) : null;
+                      {/* Group Schedules List */}
+                      <div className="p-2 divide-y divide-border/40 space-y-2">
+                        {group.schedules.map((sch) => {
+                          const isClass = sch.type === "CLASS_SESSION";
+                          const className = sch.classSite?.class?.name || sch.title || "Lịch dạy";
+                          const centreName = sch.classSite?.centre?.name || sch.officeHour?.centre?.name || "MindX Center";
+                          const total = sch.totalSessions || 14;
+                          const sIdx = sch.sessionIndex || 1;
+                          const examType = isClass ? getSessionExamType(className, sch.title, sch.description, sIdx, total) : null;
 
-                            return (
-                              <div
-                                key={sch.id}
-                                onClick={() => setViewingSchedule(sch)}
-                                className={`p-2 rounded-lg border text-[11px] leading-tight cursor-pointer transition-all hover:scale-[1.02] shadow-2xs ${getScheduleStyle(
-                                  sch
-                                )}`}
-                              >
-                                <div className="flex items-center justify-between gap-1 mb-1">
-                                  <span className="font-mono text-[9.5px] font-bold opacity-90">
-                                    {formatTime(sch.startTime)} - {formatTime(sch.endTime)}
-                                  </span>
-                                  {renderRoleBadge(sch)}
-                                </div>
-
-                                <p className="font-bold truncate text-[11px] mb-1">{className}</p>
-
-                                {isClass && (
-                                  <div className="flex items-center justify-between text-[9px] border-t border-border/30 pt-1 mt-1">
-                                    <span className="font-mono font-bold opacity-85">
-                                      B{sIdx}
-                                    </span>
-                                    {sch.classStatus === "SUSPENDED" ? (
-                                      <span className="px-1 py-0.2 bg-rose-600 text-white rounded-xs font-black tracking-wider">Tạm ngưng</span>
-                                    ) : (
+                          return (
+                            <div
+                              key={sch.id}
+                              onClick={() => setViewingSchedule(sch)}
+                              className="pt-2 first:pt-0 group/card cursor-pointer"
+                            >
+                              <div className={`p-2.5 rounded-lg border text-[11px] leading-normal transition-all hover:shadow-sm hover:-translate-y-0.5 ${getScheduleStyle(sch)}`}>
+                                <div className="flex flex-wrap items-center justify-between gap-1.5 mb-1">
+                                  <div className="flex items-center gap-1.5 font-mono text-[11px] font-bold">
+                                    <Clock className="h-3 w-3 text-primary shrink-0" />
+                                    <span>{formatTime(sch.startTime)} - {formatTime(sch.endTime)}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    {renderRoleBadge(sch)}
+                                    {isClass && sch.classStatus === "SUSPENDED" && (
+                                      <span className="px-1.5 py-0.2 bg-rose-600 text-white rounded text-[8.5px] font-black tracking-wider">
+                                        Tạm ngưng
+                                      </span>
+                                    )}
+                                    {isClass && sch.classStatus !== "SUSPENDED" && (
                                       <>
                                         {examType === "checkpoint1" && (
-                                          <span className="px-1 py-0.2 bg-amber-600 text-white rounded-xs font-bold">CP1</span>
+                                          <span className="px-1.5 py-0.2 bg-amber-600 text-white rounded text-[8.5px] font-extrabold">CP1</span>
                                         )}
                                         {examType === "checkpoint2" && (
-                                          <span className="px-1 py-0.2 bg-amber-600 text-white rounded-xs font-bold">CP2</span>
+                                          <span className="px-1.5 py-0.2 bg-amber-600 text-white rounded text-[8.5px] font-extrabold">CP2</span>
                                         )}
                                         {examType === "demo" && (
-                                          <span className="px-1 py-0.2 bg-emerald-600 text-white rounded-xs font-bold">Demo</span>
+                                          <span className="px-1.5 py-0.2 bg-emerald-600 text-white rounded text-[8.5px] font-extrabold">Demo</span>
                                         )}
                                       </>
                                     )}
                                   </div>
-                                )}
+                                </div>
 
-                                <div className="text-[9px] text-muted-foreground truncate opacity-80 mt-1">
-                                  📍 {centreName}
+                                <h4 className="font-bold text-xs text-foreground mb-1 group-hover/card:text-primary transition-colors">
+                                  {className}
+                                </h4>
+
+                                <div className="flex flex-wrap items-center justify-between gap-1.5 text-muted-foreground text-[10.5px] pt-1.5 border-t border-border/30">
+                                  <div className="flex items-center gap-1">
+                                    <span>📍</span>
+                                    <span className="font-medium">{centreName}</span>
+                                  </div>
+
+                                  {isClass && (
+                                    <div className="font-mono font-bold px-1.5 py-0.2 rounded bg-background/60 border border-border/50 text-foreground text-[9.5px]">
+                                      Buổi {sIdx}/{total}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
-                            );
-                          })
-                        )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
-                  );
-                })}
+                  ))
+                )}
+              </div>
+
+              {/* Desktop 7-Day Matrix Grid (>= md) */}
+              <div className="hidden md:block p-3 h-full">
+                <div className="grid grid-cols-7 gap-2.5 h-full min-w-[800px]">
+                  {weekDaysList
+                    .filter((d) => {
+                      if (teacherPanelDayFilter === "all") return true;
+                      const mapDay: Record<string, number> = { CN: 0, T2: 1, T3: 2, T4: 3, T5: 4, T6: 5, T7: 6 };
+                      return mapDay[teacherPanelDayFilter] === d.date.getDay();
+                    })
+                    .map((d) => {
+                      const daySchedules = teacherSchedulesList.filter((sch) => {
+                        const schDateStr = getLocalDate(sch);
+                        return schDateStr === d.fullDateStr;
+                      });
+
+                      return (
+                        <div
+                          key={d.fullDateStr}
+                          className={`flex flex-col rounded-xl border bg-card overflow-hidden transition-all shadow-2xs h-full ${
+                            d.isToday
+                              ? "ring-2 ring-primary/50 border-primary/60 bg-primary/5"
+                              : "border-border/80"
+                          }`}
+                        >
+                          {/* Day Column Header */}
+                          <div
+                            className={`p-2 text-center border-b font-bold text-xs shrink-0 flex items-center justify-between ${
+                              d.isToday
+                                ? "bg-primary text-white border-primary"
+                                : "bg-muted/60 border-border/60 text-foreground"
+                            }`}
+                          >
+                            <span className="font-bold">{d.dayName} - {d.dateStr}</span>
+                            <span
+                              className={`text-[9px] px-1.5 py-0.2 rounded-full font-mono font-black ${
+                                d.isToday ? "bg-white/20 text-white" : "bg-muted-foreground/15 text-muted-foreground"
+                              }`}
+                            >
+                              {daySchedules.length} ca
+                            </span>
+                          </div>
+
+                          {/* Day Schedules List */}
+                          <div className="p-2 space-y-1.5 flex-1 overflow-y-auto no-vertical-scrollbar">
+                            {daySchedules.length === 0 ? (
+                              <div className="h-full min-h-[100px] flex flex-col items-center justify-center gap-1 text-muted-foreground/40 text-[11px] font-medium">
+                                <Calendar className="h-4 w-4 opacity-40" />
+                                <span>Trống lịch</span>
+                              </div>
+                            ) : (
+                              daySchedules.map((sch) => {
+                                const isClass = sch.type === "CLASS_SESSION";
+                                const className = sch.classSite?.class?.name || sch.title || "Lịch dạy";
+                                const centreName = sch.classSite?.centre?.name || sch.officeHour?.centre?.name || "MindX";
+                                const total = sch.totalSessions || 14;
+                                const sIdx = sch.sessionIndex || 1;
+                                const examType = isClass ? getSessionExamType(className, sch.title, sch.description, sIdx, total) : null;
+
+                                return (
+                                  <div
+                                    key={sch.id}
+                                    onClick={() => setViewingSchedule(sch)}
+                                    className={`p-2 rounded-lg border text-[10.5px] leading-tight cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-xs ${getScheduleStyle(
+                                      sch
+                                    )}`}
+                                  >
+                                    <div className="flex items-center justify-between gap-1 mb-1">
+                                      <span className="font-mono text-[9.5px] font-bold opacity-90 flex items-center gap-1">
+                                        <Clock className="h-3 w-3 shrink-0 text-primary" />
+                                        {formatTime(sch.startTime)} - {formatTime(sch.endTime)}
+                                      </span>
+                                      {renderRoleBadge(sch)}
+                                    </div>
+
+                                    <p className="font-bold text-[11px] line-clamp-2 mb-1 leading-snug">{className}</p>
+
+                                    {isClass && (
+                                      <div className="flex items-center justify-between text-[9px] border-t border-border/30 pt-1 mt-1">
+                                        <span className="font-mono font-extrabold opacity-90 px-1 py-0.2 rounded bg-background/50">
+                                          Buổi {sIdx}/{total}
+                                        </span>
+                                        {sch.classStatus === "SUSPENDED" ? (
+                                          <span className="px-1 py-0.2 bg-rose-600 text-white rounded font-black tracking-wider text-[8px]">Tạm ngưng</span>
+                                        ) : (
+                                          <>
+                                            {examType === "checkpoint1" && (
+                                              <span className="px-1 py-0.2 bg-amber-600 text-white rounded font-extrabold text-[8px]">CP1</span>
+                                            )}
+                                            {examType === "checkpoint2" && (
+                                              <span className="px-1 py-0.2 bg-amber-600 text-white rounded font-extrabold text-[8px]">CP2</span>
+                                            )}
+                                            {examType === "demo" && (
+                                              <span className="px-1 py-0.2 bg-emerald-600 text-white rounded font-extrabold text-[8px]">Demo</span>
+                                            )}
+                                          </>
+                                        )}
+                                      </div>
+                                    )}
+
+                                    <div className="text-[9px] text-muted-foreground truncate opacity-85 mt-1 font-medium flex items-center gap-1">
+                                      <span>📍</span>
+                                      <span className="truncate">{centreName}</span>
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
               </div>
             </div>
           </div>
@@ -747,7 +1054,7 @@ export function SchedulesView({ onSwitchToPayroll }: SchedulesViewProps) {
                 <th className="sticky left-0 z-30 bg-muted p-2 w-48 min-w-[190px] border-r border-border font-bold text-foreground">
                   Giảng viên
                 </th>
-                {displayedSlots.map((slotKey) => (
+                {filteredSlotsByDay.map((slotKey) => (
                   <th
                     key={slotKey}
                     className="p-1.5 min-w-[110px] text-center border-r border-border/60 select-none"
@@ -761,7 +1068,7 @@ export function SchedulesView({ onSwitchToPayroll }: SchedulesViewProps) {
             <tbody className={`divide-y divide-border/50 transition-opacity duration-200 ${isLoading ? "opacity-60 pointer-events-none" : "opacity-100"}`}>
               {displayedTeachers.length === 0 ? (
                 <tr>
-                  <td colSpan={displayedSlots.length + 1} className="p-8 text-center text-muted-foreground">
+                  <td colSpan={filteredSlotsByDay.length + 1} className="p-8 text-center text-muted-foreground">
                     {isLoading ? "Đang tải lịch từ LMS..." : "Không tìm thấy giảng viên phù hợp."}
                   </td>
                 </tr>
@@ -785,7 +1092,7 @@ export function SchedulesView({ onSwitchToPayroll }: SchedulesViewProps) {
                         </div>
                       </td>
 
-                      {displayedSlots.map((slotKey) => {
+                      {filteredSlotsByDay.map((slotKey) => {
                         const cellSchedules = teacherSlotsMap[slotKey] || [];
 
                         return (
