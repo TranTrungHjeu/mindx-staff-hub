@@ -19,7 +19,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { R2PayrollFile, uploadFileToR2, deleteFileFromR2 } from "@/lib/r2Storage";
+import { R2PayrollFile, uploadFileToR2, deleteFileFromR2, extractMonthAndYearFromFilename } from "@/lib/r2Storage";
 import {
   Select,
   SelectContent,
@@ -60,15 +60,9 @@ export function R2ManagerModal({
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setSelectedUploadFile(file);
-      const match = file.name.match(/T(\d{1,2})[_\s](\d{4})/i);
-      if (match) {
-        setSelectedMonth(Number(match[1]));
-        setSelectedYear(Number(match[2]));
-      } else {
-        const now = new Date();
-        setSelectedMonth(now.getMonth() + 1);
-        setSelectedYear(now.getFullYear());
-      }
+      const detected = extractMonthAndYearFromFilename(file.name);
+      setSelectedMonth(detected.month);
+      setSelectedYear(detected.year);
       setActionType("upload");
       setPasswordInput("");
       setPasswordError(null);
@@ -88,7 +82,13 @@ export function R2ManagerModal({
     try {
       if (actionType === "upload" && selectedUploadFile) {
         const periodName = `Tháng ${selectedMonth}/${selectedYear}`;
-        const newFile = await uploadFileToR2(selectedUploadFile, periodName, passwordInput);
+        const newFile = await uploadFileToR2(
+          selectedUploadFile,
+          periodName,
+          passwordInput,
+          selectedMonth,
+          selectedYear
+        );
         onFilesUpdated();
         onSelectFile(newFile);
         setActionType(null);

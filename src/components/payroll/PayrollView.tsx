@@ -43,51 +43,11 @@ export function PayrollView({ onSwitchToSchedules }: PayrollViewProps) {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [sortOrder, setSortOrder] = useState<string>("hours_desc");
 
-  // Check Status Map per Session ID
+  // Checked status map populated directly from parsed Excel sheet
   const [checkedSessionMap, setCheckedSessionMap] = useState<Record<string, boolean>>({});
 
   const [selectedTeacher, setSelectedTeacher] = useState<TeacherPayrollSummary | null>(null);
   const [isR2ModalOpen, setIsR2ModalOpen] = useState(false);
-
-  // Load checked session statuses from localStorage when active file changes
-  useEffect(() => {
-    if (!activeFile?.id) return;
-    try {
-      const stored = localStorage.getItem(`mindx_checked_sessions_${activeFile.id}`);
-      if (stored) {
-        setCheckedSessionMap(JSON.parse(stored));
-      } else {
-        setCheckedSessionMap({});
-      }
-    } catch (e) {
-      setCheckedSessionMap({});
-    }
-  }, [activeFile?.id]);
-
-  const toggleSessionCheck = (sessionId: string) => {
-    setCheckedSessionMap((prev) => {
-      const next = { ...prev, [sessionId]: !prev[sessionId] };
-      if (activeFile?.id) {
-        localStorage.setItem(`mindx_checked_sessions_${activeFile.id}`, JSON.stringify(next));
-      }
-      return next;
-    });
-  };
-
-  const toggleAllTeacherSessions = (teacher: TeacherPayrollSummary, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    setCheckedSessionMap((prev) => {
-      const allChecked = teacher.sessions.length > 0 && teacher.sessions.every((s) => prev[s.id]);
-      const next = { ...prev };
-      teacher.sessions.forEach((s) => {
-        next[s.id] = !allChecked;
-      });
-      if (activeFile?.id) {
-        localStorage.setItem(`mindx_checked_sessions_${activeFile.id}`, JSON.stringify(next));
-      }
-      return next;
-    });
-  };
 
   const loadPayrollFile = async (file: R2PayrollFile | null) => {
     if (!file) {
@@ -120,21 +80,13 @@ export function PayrollView({ onSwitchToSchedules }: PayrollViewProps) {
       }
       setPayrollData(data);
 
-      // Populate checkedSessionMap directly from parsed Excel file rows (plus local overrides)
+      // Populate checkedSessionMap directly from parsed Excel file rows
       const initialMap: Record<string, boolean> = {};
       data.teachers.forEach((t) => {
         t.sessions.forEach((s) => {
           initialMap[s.id] = Boolean(s.isChecked);
         });
       });
-
-      try {
-        const stored = localStorage.getItem(`mindx_checked_sessions_${file.id}`);
-        if (stored) {
-          const overrides = JSON.parse(stored);
-          Object.assign(initialMap, overrides);
-        }
-      } catch (e) {}
 
       setCheckedSessionMap(initialMap);
 
@@ -361,7 +313,7 @@ export function PayrollView({ onSwitchToSchedules }: PayrollViewProps) {
                 <div className="min-w-0 flex-1">
                   <p className="text-[10px] sm:text-[11px] font-semibold text-muted-foreground uppercase tracking-wider truncate">Kỳ Công Tháng</p>
                   <p className="text-xs sm:text-sm font-extrabold font-mono text-foreground truncate">
-                    {activeFile?.month || "Chưa có file"}
+                    {activeFile?.month || payrollData?.detectedMonth || "Chưa có file"}
                   </p>
                 </div>
               </div>
@@ -476,10 +428,8 @@ export function PayrollView({ onSwitchToSchedules }: PayrollViewProps) {
 
                         {/* Bottom Actions Row */}
                         <div className="flex items-center justify-between gap-2 pt-1">
-                          <button
-                            type="button"
-                            onClick={(e) => toggleAllTeacherSessions(t, e)}
-                            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all border ${
+                          <div
+                            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold border ${
                               isFullyChecked
                                 ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
                                 : isPartiallyChecked
@@ -503,7 +453,7 @@ export function PayrollView({ onSwitchToSchedules }: PayrollViewProps) {
                                 <span>Unchecked (0/{totalSessionsCount})</span>
                               </>
                             )}
-                          </button>
+                          </div>
 
                           <div className="h-8 w-8 rounded-xl bg-muted flex items-center justify-center text-muted-foreground shrink-0">
                             <ChevronRight className="h-4 w-4" />
@@ -659,35 +609,32 @@ export function PayrollView({ onSwitchToSchedules }: PayrollViewProps) {
                               </td>
 
                               <td className="p-3.5 text-center">
-                                <button
-                                  type="button"
-                                  onClick={(e) => toggleAllTeacherSessions(t, e)}
-                                  title="Click để Check/Uncheck tất cả ca dạy của giảng viên này"
-                                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-semibold transition-all duration-200 border shadow-2xs active:scale-95 cursor-pointer group/btn ${
+                                <span
+                                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-semibold border shadow-2xs ${
                                     isFullyChecked
-                                      ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25 hover:bg-emerald-500/20"
+                                      ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25"
                                       : isPartiallyChecked
-                                      ? "bg-amber-500/10 text-amber-800 dark:text-amber-200 border-amber-500/25 hover:bg-amber-500/20"
-                                      : "bg-muted/50 text-muted-foreground border-border/80 hover:bg-muted hover:text-foreground"
+                                      ? "bg-amber-500/10 text-amber-800 dark:text-amber-200 border-amber-500/25"
+                                      : "bg-muted/50 text-muted-foreground border-border/80"
                                   }`}
                                 >
                                   {isFullyChecked ? (
                                     <>
-                                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 group-hover/btn:scale-110 transition-transform duration-200" />
+                                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                                       <span>Checked ({checkedSessionsCount}/{totalSessionsCount})</span>
                                     </>
                                   ) : isPartiallyChecked ? (
                                     <>
-                                      <Clock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0 group-hover/btn:scale-110 transition-transform duration-200" />
+                                      <Clock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
                                       <span>Checked ({checkedSessionsCount}/{totalSessionsCount})</span>
                                     </>
                                   ) : (
                                     <>
-                                      <Circle className="h-3.5 w-3.5 opacity-40 shrink-0 group-hover/btn:scale-110 transition-transform duration-200" />
+                                      <Circle className="h-3.5 w-3.5 opacity-40 shrink-0" />
                                       <span>Unchecked (0/{totalSessionsCount})</span>
                                     </>
                                   )}
-                                </button>
+                                </span>
                               </td>
 
                               <td className="p-3.5 text-center">
@@ -723,8 +670,6 @@ export function PayrollView({ onSwitchToSchedules }: PayrollViewProps) {
         teacher={selectedTeacher}
         onClose={() => setSelectedTeacher(null)}
         checkedSessionMap={checkedSessionMap}
-        onToggleSessionCheck={toggleSessionCheck}
-        onToggleAllTeacherSessions={toggleAllTeacherSessions}
       />
     </div>
   );

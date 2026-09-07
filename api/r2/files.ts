@@ -24,10 +24,39 @@ export default async function handler(req: any, res: any) {
   });
 
   function extractMonthFromFilename(filename: string): string {
-    const match = filename.match(/T(\d{1,2})[_\s](\d{4})/i) || filename.match(/(\d{1,2})[_\/](\d{4})/);
-    if (match) {
-      return `Tháng ${match[1]}/${match[2]}`;
+    if (!filename) {
+      const now = new Date();
+      return `Tháng ${now.getMonth() + 1}/${now.getFullYear()}`;
     }
+    const thangMatch = filename.match(/Th[áa]ng[_\s-]*0*(\d{1,2})[_\s\/\.-]*(\d{4})/i);
+    if (thangMatch) return `Tháng ${Number(thangMatch[1])}/${thangMatch[2]}`;
+
+    const tYearMatch = filename.match(/T[_\s-]*0*(\d{1,2})[_\s\/\.-]+(\d{4})/i);
+    if (tYearMatch) return `Tháng ${Number(tYearMatch[1])}/${tYearMatch[2]}`;
+
+    const monthYearMatch = filename.match(/(?:^|[_\s\.-])0*(\d{1,2})[_\/\.-](\d{4})(?:[_\s\.-]|$)/);
+    if (monthYearMatch) {
+      const m = Number(monthYearMatch[1]);
+      const y = Number(monthYearMatch[2]);
+      if (m >= 1 && m <= 12) return `Tháng ${m}/${y}`;
+    }
+
+    const yearMonthMatch = filename.match(/(?:^|[_\s\.-])(\d{4})[_\/\.-]0*(\d{1,2})(?:[_\s\.-]|$)/);
+    if (yearMonthMatch) {
+      const y = Number(yearMonthMatch[1]);
+      const m = Number(yearMonthMatch[2]);
+      if (m >= 1 && m <= 12) return `Tháng ${m}/${y}`;
+    }
+
+    const tOnlyMatch = filename.match(/T[_\s-]*0*(\d{1,2})(?:[_\s\.-]|$)/i) || filename.match(/Th[áa]ng[_\s-]*0*(\d{1,2})/i);
+    if (tOnlyMatch) {
+      const m = Number(tOnlyMatch[1]);
+      if (m >= 1 && m <= 12) {
+        const now = new Date();
+        return `Tháng ${m}/${now.getFullYear()}`;
+      }
+    }
+
     const now = new Date();
     return `Tháng ${now.getMonth() + 1}/${now.getFullYear()}`;
   }

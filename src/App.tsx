@@ -2,10 +2,14 @@ import { useState, useEffect } from "react";
 import { Sidebar, ViewMode } from "@/components/navigation/Sidebar";
 import { SchedulesView } from "@/components/schedules/SchedulesView";
 import { PayrollView } from "@/components/payroll/PayrollView";
+import { TeacherBookingView } from "@/components/booking/TeacherBookingView";
 
 function getViewFromPath(path: string): ViewMode {
   if (path.startsWith("/payroll")) {
     return "payroll";
+  }
+  if (path.startsWith("/booking")) {
+    return "booking";
   }
   return "schedules";
 }
@@ -13,6 +17,9 @@ function getViewFromPath(path: string): ViewMode {
 function getPathFromView(view: ViewMode): string {
   if (view === "payroll") {
     return "/payroll";
+  }
+  if (view === "booking") {
+    return "/booking";
   }
   return "/schedules";
 }
@@ -49,10 +56,14 @@ export default function App() {
 
       {/* Main Workspace Area */}
       <main className="flex-1 flex flex-col min-h-0 h-full overflow-hidden relative">
-        {currentView === "schedules" ? (
+        {currentView === "schedules" && (
           <SchedulesView onSwitchToPayroll={() => handleViewChange("payroll")} />
-        ) : (
+        )}
+        {currentView === "payroll" && (
           <PayrollView onSwitchToSchedules={() => handleViewChange("schedules")} />
+        )}
+        {currentView === "booking" && (
+          <TeacherBookingView />
         )}
       </main>
     </div>

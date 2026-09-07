@@ -7,10 +7,11 @@ import {
   LayoutGrid,
   Menu,
   X,
+  UserCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export type ViewMode = "schedules" | "payroll";
+export type ViewMode = "schedules" | "payroll" | "booking";
 
 interface SidebarProps {
   currentView: ViewMode;
@@ -53,21 +54,19 @@ export function Sidebar({ currentView, onViewChange }: SidebarProps) {
       id: "schedules" as ViewMode,
       label: "Ma Trận Lịch Tuần",
       icon: CalendarDays,
-      activeColor: "bg-[#000056] text-white dark:bg-primary dark:text-primary-foreground shadow-xs",
+      activeColor: "bg-[#000056] text-white shadow-xs",
     },
     {
       id: "payroll" as ViewMode,
       label: "Bảng Công Giảng Viên",
       icon: CircleDollarSign,
-      activeColor: "bg-emerald-600 text-white dark:bg-emerald-600 dark:text-white shadow-xs",
+      activeColor: "bg-[#000056] text-white shadow-xs",
     },
     {
-      id: "substitutes",
-      label: "Quản Lý Dạy Thay",
-      icon: Repeat,
-      activeColor: "",
-      disabled: true,
-      badge: "Sắp có",
+      id: "booking" as ViewMode,
+      label: "Book Giáo Viên",
+      icon: UserCheck,
+      activeColor: "bg-[#000056] text-white shadow-xs",
     },
     {
       id: "classrooms",
@@ -94,17 +93,21 @@ export function Sidebar({ currentView, onViewChange }: SidebarProps) {
             <Menu className="h-5 w-5 text-primary" />
           </Button>
 
-          <span className="font-bold text-xs tracking-tight text-foreground">
-            {currentView === "schedules" ? "Ma Trận Lịch Tuần" : "Bảng Công Giảng Viên"}
+          <span className="font-bold text-xs tracking-tight text-foreground truncate max-w-[120px]">
+            {currentView === "schedules"
+              ? "Lịch Tuần"
+              : currentView === "payroll"
+              ? "Bảng Công"
+              : "Book GV"}
           </span>
         </div>
 
         {/* Quick View Switcher Pills */}
-        <div className="flex items-center p-0.5 rounded-xl bg-muted/70 border border-border/80">
+        <div className="flex items-center p-0.5 rounded-xl bg-muted/70 border border-border/80 overflow-x-auto no-scrollbar">
           <button
             type="button"
             onClick={() => onViewChange("schedules")}
-            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
+            className={`px-2 py-1 rounded-lg text-[10.5px] font-bold transition-all ${
               currentView === "schedules"
                 ? "bg-[#000056] text-white shadow-2xs"
                 : "text-muted-foreground hover:text-foreground"
@@ -115,13 +118,24 @@ export function Sidebar({ currentView, onViewChange }: SidebarProps) {
           <button
             type="button"
             onClick={() => onViewChange("payroll")}
-            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
+            className={`px-2 py-1 rounded-lg text-[10.5px] font-bold transition-all ${
               currentView === "payroll"
-                ? "bg-emerald-600 text-white shadow-2xs"
+                ? "bg-[#000056] text-white shadow-2xs"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            Bảng Công
+            Công
+          </button>
+          <button
+            type="button"
+            onClick={() => onViewChange("booking")}
+            className={`px-2 py-1 rounded-lg text-[10.5px] font-bold transition-all ${
+              currentView === "booking"
+                ? "bg-[#000056] text-white shadow-2xs"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Book
           </button>
         </div>
       </div>

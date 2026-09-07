@@ -28,6 +28,7 @@ export interface TeacherPayrollSummary {
 
 export interface PayrollParsedResult {
   filename: string;
+  detectedMonth?: string;
   summary: {
     totalTeachers: number;
     totalHours: number;
@@ -438,8 +439,36 @@ export async function parsePayrollData(
 
   teachersList.sort((a, b) => b.totalHours - a.totalHours);
 
+  // Detect dominant month from session dates
+  const monthCounts: Record<string, number> = {};
+  Object.values(teacherMap).forEach((t) => {
+    t.sessions.forEach((s) => {
+      if (s.date) {
+        const match = s.date.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        if (match) {
+          const m = Number(match[2]);
+          const y = Number(match[3]);
+          if (m >= 1 && m <= 12 && y >= 2020 && y <= 2035) {
+            const key = `Tháng ${m}/${y}`;
+            monthCounts[key] = (monthCounts[key] || 0) + 1;
+          }
+        }
+      }
+    });
+  });
+
+  let detectedMonth = "";
+  let maxCount = 0;
+  Object.entries(monthCounts).forEach(([mKey, count]) => {
+    if (count > maxCount) {
+      maxCount = count;
+      detectedMonth = mKey;
+    }
+  });
+
   return {
     filename: fileName,
+    detectedMonth: detectedMonth || undefined,
     summary: {
       totalTeachers: teachersList.length,
       totalHours: Math.round(grandTotalHours * 10) / 10,
