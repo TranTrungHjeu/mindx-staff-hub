@@ -23,7 +23,20 @@ import {
   History,
   Trash2,
   AlertTriangle,
+  ExternalLink,
+  RefreshCw,
+  FileSpreadsheet,
+  Users,
+  Info,
 } from "lucide-react";
+import {
+  SheetTab,
+  TrialSlot,
+  fetchSheetTabs,
+  findMatchingTabForDate,
+  fetchAndParseTrialSlots,
+  SPREADSHEET_ID,
+} from "@/lib/trialSheetParser";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -112,6 +125,80 @@ export function TeacherBookingView() {
   const [trialTimeStart, setTrialTimeStart] = useState("18:00");
   const [trialTimeEnd, setTrialTimeEnd] = useState("19:30");
   const [trialTrack, setTrialTrack] = useState("KIDS / TEENS");
+
+  // Google Sheets Trial Booking State
+  const [trialMode, setTrialMode] = useState<"SHEET" | "MANUAL">("SHEET");
+  const [sheetTabs, setSheetTabs] = useState<SheetTab[]>([]);
+  const [selectedSheetGid, setSelectedSheetGid] = useState<string | null>(null);
+  const [trialSlots, setTrialSlots] = useState<TrialSlot[]>([]);
+  const [selectedTrialSlot, setSelectedTrialSlot] = useState<TrialSlot | null>(null);
+  const [isFetchingSheet, setIsFetchingSheet] = useState(false);
+  const [sheetError, setSheetError] = useState<string | null>(null);
+
+  // Load Sheet Tabs on mount or when switching to trial subtab
+  useEffect(() => {
+    let isMounted = true;
+    async function loadTabs() {
+      try {
+        const tabs = await fetchSheetTabs();
+        if (!isMounted) return;
+        setSheetTabs(tabs);
+
+        // Auto match tab for current selectedDate
+        const matched = findMatchingTabForDate(selectedDate, tabs);
+        if (matched) {
+          setSelectedSheetGid(matched.gid);
+        } else if (tabs.length > 0) {
+          setSelectedSheetGid(tabs[0].gid);
+        }
+      } catch (err) {
+        console.error("Error fetching sheet tabs:", err);
+      }
+    }
+
+    if (activeSubTab === "trial" && sheetTabs.length === 0) {
+      loadTabs();
+    }
+  }, [activeSubTab, sheetTabs.length]);
+
+  // Auto match sheet tab when selectedDate changes
+  useEffect(() => {
+    if (sheetTabs.length > 0) {
+      const matched = findMatchingTabForDate(selectedDate, sheetTabs);
+      if (matched && matched.gid !== selectedSheetGid) {
+        setSelectedSheetGid(matched.gid);
+      }
+    }
+  }, [selectedDate, sheetTabs]);
+
+  // Load Trial Slots when selectedSheetGid changes
+  const loadTrialSlots = async (gid: string) => {
+    setIsFetchingSheet(true);
+    setSheetError(null);
+    try {
+      const currentTab = sheetTabs.find((t) => t.gid === gid);
+      const slots = await fetchAndParseTrialSlots(gid, SPREADSHEET_ID, currentTab?.name);
+      setTrialSlots(slots);
+
+      if (slots.length > 0) {
+        const dateStr = format(selectedDate, "yyyy-MM-dd");
+        const matchingSlot = slots.find((s) => s.dateStr === dateStr) || slots[0];
+        setSelectedTrialSlot(matchingSlot);
+      } else {
+        setSelectedTrialSlot(null);
+      }
+    } catch (err: any) {
+      setSheetError(err?.message || "Không thể đọc dữ liệu ca Trial từ Google Sheet.");
+    } finally {
+      setIsFetchingSheet(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSubTab === "trial" && selectedSheetGid) {
+      loadTrialSlots(selectedSheetGid);
+    }
+  }, [activeSubTab, selectedSheetGid]);
 
   // Confirmation Modal State
   const [bookingCandidate, setBookingCandidate] = useState<Teacher | null>(null);
@@ -226,16 +313,99 @@ export function TeacherBookingView() {
     return "";
   };
 
+  const formatDisplayDate = (dateStr: string | null | undefined) => {
+    if (!dateStr) return "";
+    const parts = dateStr.split("-");
+    if (parts.length === 3 && parts[0].length === 4) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return dateStr;
+  };
+
   const getLocalHHMM = (timeStr: string) => {
     const obj = extractHHMM(timeStr);
     if (!obj) return "";
     return `${String(obj.hours).padStart(2, "0")}:${String(obj.minutes).padStart(2, "0")}`;
   };
 
-  // Extract Session 14 classes for Sub-tab 3 (Giám Khảo)
+  const isScheduleAtDefaultCentre = (sch: any): boolean => {
+    if (!sch) return false;
+
+    // Check classSite centre ID
+    const classCentreId = sch.classSite?.centre?.id;
+    if (classCentreId) {
+      return classCentreId === DEFAULT_CENTRE_ID;
+    }
+
+    // Check officeHour centre ID
+    const officeCentreId = sch.officeHour?.centre?.id;
+    if (officeCentreId) {
+      return officeCentreId === DEFAULT_CENTRE_ID;
+    }
+
+    // Check centre name fallback if ID is missing
+    const centreName = (
+      sch.classSite?.centre?.name ||
+      sch.officeHour?.centre?.name ||
+      ""
+    ).toLowerCase();
+
+    if (centreName) {
+      return (
+        centreName.includes("230") ||
+        centreName.includes("thủ dầu một") ||
+        centreName.includes("thu dau mot") ||
+        centreName.includes("dlbd")
+      );
+    }
+
+    return true;
+  };
+
+  const isScheduleSuspendedOrCancelled = (sch: any): boolean => {
+    if (!sch) return false;
+
+    const classStatus = (sch.classStatus || "").toUpperCase().trim();
+    if (
+      classStatus === "PAUSED" ||
+      classStatus === "STOPPED" ||
+      classStatus === "SUSPENDED" ||
+      classStatus === "CANCELLED" ||
+      classStatus === "DROPPED" ||
+      classStatus === "OFF"
+    ) {
+      return true;
+    }
+
+    const combinedText = `${sch.title || ""} ${sch.description || ""}`.toLowerCase();
+    return (
+      combinedText.includes("tạm ngưng") ||
+      combinedText.includes("tam ngung") ||
+      combinedText.includes("tạm dừng") ||
+      combinedText.includes("tam dung") ||
+      combinedText.includes("nghỉ học") ||
+      combinedText.includes("nghi hoc") ||
+      combinedText.includes("đã hủy") ||
+      combinedText.includes("da huy") ||
+      combinedText.includes("lớp dừng") ||
+      combinedText.includes("lop dung") ||
+      combinedText.includes("bão") ||
+      combinedText.includes("[hủy]") ||
+      combinedText.includes("[nghỉ]") ||
+      combinedText.includes("[tạm ngưng]") ||
+      combinedText.includes("cancelled") ||
+      combinedText.includes("suspended") ||
+      combinedText.includes("stopped") ||
+      combinedText.includes("paused")
+    );
+  };
+
+  // Extract Session 14 classes for Sub-tab 3 (Giám Khảo) - excluding suspended/cancelled & non-BU classes
   const session14Schedules = useMemo(() => {
     return schedules.filter((sch) => {
       if (sch.type !== "CLASS_SESSION") return false;
+      if (!isScheduleAtDefaultCentre(sch)) return false;
+      if (isScheduleSuspendedOrCancelled(sch)) return false;
       const sIdx = sch.sessionIndex || 1;
       const total = sch.totalSessions || 14;
       // Class is at Session 14 or final session
@@ -243,9 +413,11 @@ export function TeacherBookingView() {
     });
   }, [schedules]);
 
-  // Unique Class Schedules list (deduplicated by class session slot)
+  // Unique Class Schedules list (deduplicated by class session slot and sorted chronologically, excluding suspended/cancelled & non-BU classes)
   const uniqueClassSchedules = useMemo(() => {
-    const source = activeSubTab === "examiner" ? session14Schedules : schedules.filter((s) => s.type === "CLASS_SESSION");
+    const source = activeSubTab === "examiner"
+      ? session14Schedules
+      : schedules.filter((s) => s.type === "CLASS_SESSION" && isScheduleAtDefaultCentre(s) && !isScheduleSuspendedOrCancelled(s));
     const map = new Map<string, Schedule>();
 
     source.forEach((sch) => {
@@ -259,7 +431,19 @@ export function TeacherBookingView() {
       }
     });
 
-    return Array.from(map.values());
+    const list = Array.from(map.values());
+    list.sort((a, b) => {
+      const dateA = getLocalDateStr(a);
+      const dateB = getLocalDateStr(b);
+      if (dateA !== dateB) {
+        return dateA.localeCompare(dateB);
+      }
+      const timeA = getLocalHHMM(a.startTime);
+      const timeB = getLocalHHMM(b.startTime);
+      return timeA.localeCompare(timeB);
+    });
+
+    return list;
   }, [activeSubTab, session14Schedules, schedules]);
 
   // Filtered Class Schedules by search query (class code or class name)
@@ -329,12 +513,14 @@ export function TeacherBookingView() {
     return { lec: lecTeacher, ta: taTeacher };
   }, [selectedSchedule, schedules, teachersList]);
 
-  // Auto select default schedule when switching subtabs or filtering
+  // Auto select default schedule when switching subtabs or filtering (preferring upcoming/today's classes)
   useEffect(() => {
     if (activeSubTab === "substitute" || activeSubTab === "examiner") {
       const currentStillValid = selectedSchedule && filteredClassSchedules.some((s) => s.id === selectedSchedule.id);
       if (!currentStillValid) {
-        setSelectedSchedule(filteredClassSchedules[0] || null);
+        const todayStr = format(new Date(), "yyyy-MM-dd");
+        const firstUpcoming = filteredClassSchedules.find((s) => getLocalDateStr(s) >= todayStr);
+        setSelectedSchedule(firstUpcoming || filteredClassSchedules[0] || null);
       }
     } else {
       setSelectedSchedule(null);
@@ -344,6 +530,18 @@ export function TeacherBookingView() {
   // Target shift timing details
   const targetShiftDetails = useMemo(() => {
     if (activeSubTab === "trial") {
+      if (trialMode === "SHEET" && selectedTrialSlot) {
+        return {
+          dateStr: selectedTrialSlot.dateStr || format(selectedDate, "yyyy-MM-dd"),
+          displayDate: selectedTrialSlot.displayDate ? `${selectedTrialSlot.displayDate} (${selectedTrialSlot.day})` : format(selectedDate, "dd/MM/yyyy (EEEE)"),
+          startTime: selectedTrialSlot.startTime,
+          endTime: selectedTrialSlot.endTime,
+          className: `Lớp Trial Sheet: ${selectedTrialSlot.track} (${selectedTrialSlot.format})`,
+          primaryTeacherId: null,
+          trialSlot: selectedTrialSlot,
+        };
+      }
+
       return {
         dateStr: format(selectedDate, "yyyy-MM-dd"),
         displayDate: format(selectedDate, "dd/MM/yyyy (EEEE)"),
@@ -357,20 +555,27 @@ export function TeacherBookingView() {
     if (!selectedSchedule) return null;
 
     const dateStr = getLocalDateStr(selectedSchedule);
-    const dObj = dateStr ? new Date(dateStr) : selectedDate;
+    const displayDate = formatDisplayDate(dateStr) || format(selectedDate, "dd/MM/yyyy");
     const startTime = getLocalHHMM(selectedSchedule.startTime);
     const endTime = getLocalHHMM(selectedSchedule.endTime);
     const className = selectedSchedule.classSite?.class?.name || selectedSchedule.title || "Lớp học";
 
     return {
       dateStr,
-      displayDate: format(dObj, "dd/MM/yyyy"),
+      displayDate,
       startTime,
       endTime,
       className,
       primaryTeacherId: selectedSchedule.teacherId,
     };
-  }, [selectedSchedule, activeSubTab, selectedDate, trialTimeStart, trialTimeEnd, trialTrack]);
+  }, [selectedSchedule, activeSubTab, selectedDate, trialMode, selectedTrialSlot, trialTimeStart, trialTimeEnd, trialTrack]);
+
+  // Check if target shift date has already passed
+  const isTargetPastDate = useMemo(() => {
+    if (!targetShiftDetails?.dateStr) return false;
+    const todayStr = format(new Date(), "yyyy-MM-dd");
+    return targetShiftDetails.dateStr < todayStr;
+  }, [targetShiftDetails]);
 
   // Track teachers already booked for the target shift in realtime
   const currentShiftBookings = useMemo(() => {
@@ -441,8 +646,14 @@ export function TeacherBookingView() {
         return getLocalDateStr(s) === dateStr;
       });
 
-      // Check if candidate has schedule conflict during target shift (from LMS)
-      const hasLmsConflict = teacherDaySchedules.some((s) => {
+      // Filter out suspended/cancelled classes for presence & conflict calculation
+      const activeTeacherDaySchedules = teacherDaySchedules.filter((s) => !isScheduleSuspendedOrCancelled(s));
+
+      // Filter active schedules specifically AT BU Thủ Dầu Một
+      const activeTeacherBUDaySchedules = activeTeacherDaySchedules.filter((s) => isScheduleAtDefaultCentre(s));
+
+      // Check if candidate has schedule conflict during target shift (from active LMS schedules across any centre)
+      const hasLmsConflict = activeTeacherDaySchedules.some((s) => {
         const sStart = getLocalHHMM(s.startTime);
         const sEnd = getLocalHHMM(s.endTime);
         if (!sStart || !sEnd) return false;
@@ -466,16 +677,18 @@ export function TeacherBookingView() {
         return rec.startTime < endTime && startTime < rec.endTime;
       });
 
-      // If occupied at this time (LMS schedule OR confirmed booking history) -> Exclude
+      // If occupied at this time (active LMS schedule OR confirmed booking history) -> Exclude
       if (hasLmsConflict || hasHistoryOverlap) return;
 
-      // Check if candidate has other classes at BU Thủ Dầu Một on this date
-      const isAtBU = teacherDaySchedules.length > 0;
+      // Check if candidate has active (non-suspended) classes AT BU Thủ Dầu Một on this date
+      const isAtBU = activeTeacherBUDaySchedules.length > 0;
 
-      // Calculate total weekly hours for workload indicator
-      const teacherAllSchedules = schedules.filter((s) => s.teacherId === t.id);
+      // Calculate total weekly active hours for workload indicator
+      const teacherAllActiveSchedules = schedules.filter(
+        (s) => s.teacherId === t.id && !isScheduleSuspendedOrCancelled(s)
+      );
       let totalMins = 0;
-      teacherAllSchedules.forEach((s) => {
+      teacherAllActiveSchedules.forEach((s) => {
         if (s.startTime && s.endTime) {
           try {
             const st = new Date(s.startTime).getTime();
@@ -489,7 +702,7 @@ export function TeacherBookingView() {
 
       const candidateObj = {
         teacher: t,
-        daySessionsCount: teacherDaySchedules.length,
+        daySessionsCount: activeTeacherBUDaySchedules.length,
         weeklyHours: weeklyHoursStr,
       };
 
@@ -505,7 +718,7 @@ export function TeacherBookingView() {
 
   // Handle confirming a booking
   const handleConfirmBooking = () => {
-    if (!bookingCandidate || !targetShiftDetails) return;
+    if (!bookingCandidate || !targetShiftDetails || isTargetPastDate) return;
 
     saveBookingRecord({
       type: activeSubTab === "history" ? "substitute" : activeSubTab,
@@ -807,7 +1020,7 @@ export function TeacherBookingView() {
                           </span>
                         </td>
                         <td className="p-2.5 font-mono text-[11px]">
-                          {rec.dateStr} <span className="text-muted-foreground">({rec.startTime} - {rec.endTime})</span>
+                          {formatDisplayDate(rec.dateStr)} <span className="text-muted-foreground">({rec.startTime} - {rec.endTime})</span>
                         </td>
                         <td className="p-2.5">
                           <strong className="text-foreground">{rec.assignedTeacherName}</strong>
@@ -926,26 +1139,43 @@ export function TeacherBookingView() {
                       const sIdx = sch.sessionIndex || 1;
                       const total = sch.totalSessions || 14;
 
+                      const todayStr = format(new Date(), "yyyy-MM-dd");
+                      const isPastDate = Boolean(dateStr && dateStr < todayStr);
+
                       return (
                         <div
                           key={sch.id}
                           onClick={() => setSelectedSchedule(sch)}
                           className={`p-2.5 rounded-lg border text-xs cursor-pointer transition-all ${
                             isSelected
-                              ? "border-primary bg-primary/5 ring-1 ring-primary/30 font-bold shadow-xs"
+                              ? isPastDate
+                                ? "border-amber-500/50 bg-amber-500/5 ring-1 ring-amber-500/20 font-bold shadow-xs"
+                                : "border-primary bg-primary/5 ring-1 ring-primary/30 font-bold shadow-xs"
+                              : isPastDate
+                              ? "border-border/60 bg-muted/30 opacity-70 hover:opacity-100 hover:bg-muted/50"
                               : "border-border/80 hover:bg-muted/50"
                           }`}
                         >
                           <div className="flex items-center justify-between gap-1 mb-1">
-                            <span className="font-mono text-[11px] text-primary flex items-center gap-1 font-extrabold">
+                            <span
+                              className={`font-mono text-[11px] flex items-center gap-1 font-extrabold ${
+                                isPastDate ? "text-muted-foreground" : "text-primary"
+                              }`}
+                            >
                               <Clock className="h-3 w-3" />
-                              {dateStr} ({startTime} - {endTime})
+                              {formatDisplayDate(dateStr)} ({startTime} - {endTime})
                             </span>
-                            {activeSubTab === "examiner" && (
+
+                            {isPastDate ? (
+                              <span className="px-1.5 py-0.2 bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 rounded text-[9px] font-bold flex items-center gap-0.5">
+                                <XCircle className="h-2.5 w-2.5" />
+                                <span>Đã Qua</span>
+                              </span>
+                            ) : activeSubTab === "examiner" ? (
                               <span className="px-1.5 py-0.2 bg-[#000056] text-white rounded text-[8.5px] font-bold">
                                 Buổi 14/14
                               </span>
-                            )}
+                            ) : null}
                           </div>
 
                           <h4 className="font-bold text-xs text-foreground mb-1 line-clamp-1">{className}</h4>
@@ -960,57 +1190,255 @@ export function TeacherBookingView() {
                 </div>
               </div>
             ) : (
-              /* Subtab 2: Manual Trial Input Form */
-              <div className="p-4 space-y-4 flex-1">
-                <div>
-                  <label className="text-xs font-bold text-foreground block mb-1">Ngày diễn ra ca Trial:</label>
-                  <DatePickerDropdown
-                    selectedDate={selectedDate}
-                    onSelect={(d) => setSelectedDate(d)}
-                    className="w-full justify-between"
-                  />
+              /* Subtab 2: Google Sheets Trial Reader & Manual Input */
+              <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                {/* Header Mode Switcher (Google Sheet vs Manual) */}
+                <div className="p-2 bg-muted/40 border-b border-border flex items-center justify-between gap-1 shrink-0">
+                  <div className="flex items-center bg-background p-0.5 rounded-lg border border-border text-[11px] font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setTrialMode("SHEET")}
+                      className={`flex items-center gap-1 px-2.5 py-1 rounded-md transition-all ${
+                        trialMode === "SHEET"
+                          ? "bg-[#000056] text-white shadow-2xs"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <FileSpreadsheet className="h-3 w-3" />
+                      <span>Từ Google Sheet</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTrialMode("MANUAL")}
+                      className={`flex items-center gap-1 px-2.5 py-1 rounded-md transition-all ${
+                        trialMode === "MANUAL"
+                          ? "bg-[#000056] text-white shadow-2xs"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <span>Nhập Thủ Công</span>
+                    </button>
+                  </div>
+
+                  {trialMode === "SHEET" && selectedSheetGid && (
+                    <a
+                      href={`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/htmlview?gid=${selectedSheetGid}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10.5px] text-primary hover:underline font-bold flex items-center gap-1 truncate"
+                      title="Mở Google Sheet trên tab mới"
+                    >
+                      <span>Link Sheet Gốc</span>
+                      <ExternalLink className="h-3 w-3 shrink-0" />
+                    </a>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-xs font-bold text-foreground block mb-1">Giờ bắt đầu:</label>
-                    <Input
-                      type="time"
-                      value={trialTimeStart}
-                      onChange={(e) => setTrialTimeStart(e.target.value)}
-                      className="h-8 text-xs bg-card"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-foreground block mb-1">Giờ kết thúc:</label>
-                    <Input
-                      type="time"
-                      value={trialTimeEnd}
-                      onChange={(e) => setTrialTimeEnd(e.target.value)}
-                      className="h-8 text-xs bg-card"
-                    />
-                  </div>
-                </div>
+                {trialMode === "SHEET" ? (
+                  <div className="flex-1 flex flex-col min-h-0 overflow-hidden p-2 space-y-2">
+                    {/* Sheet Tab Selector Dropdown & Refresh Bar */}
+                    <div className="p-2 rounded-lg border border-border bg-card space-y-1.5 shrink-0">
+                      <div className="flex items-center justify-between gap-1 text-[11px]">
+                        <label className="font-bold text-foreground flex items-center gap-1">
+                          <FileSpreadsheet className="h-3.5 w-3.5 text-primary" />
+                          <span>Chọn Sheet Tuần:</span>
+                        </label>
+                        {isFetchingSheet ? (
+                          <span className="text-[10px] text-primary animate-pulse font-bold flex items-center gap-1">
+                            <RefreshCw className="h-3 w-3 animate-spin" /> Đang tải dữ liệu...
+                          </span>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => selectedSheetGid && loadTrialSlots(selectedSheetGid)}
+                            className="h-6 px-1.5 text-[10.5px] font-bold text-muted-foreground hover:text-foreground"
+                            title="Tải lại dữ liệu Sheet"
+                          >
+                            <RefreshCw className="h-3 w-3 mr-1" />
+                            Làm mới
+                          </Button>
+                        )}
+                      </div>
 
-                <div>
-                  <label className="text-xs font-bold text-foreground block mb-1">Khối môn / Chương trình:</label>
-                  <div className="flex gap-1.5 flex-wrap">
-                    {["KIDS / TEENS", "SCRATCH / PYTHON", "WEB / GAME", "ROBOTICS / AI"].map((track) => (
-                      <button
-                        key={track}
-                        type="button"
-                        onClick={() => setTrialTrack(track)}
-                        className={`px-2.5 py-1 rounded-md text-[10.5px] font-bold border transition-all ${
-                          trialTrack === track
-                            ? "bg-[#000056] text-white border-[#000056] shadow-2xs"
-                            : "bg-card border-border text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        {track}
-                      </button>
-                    ))}
+                      <div className="flex items-center gap-1.5">
+                        <select
+                          value={selectedSheetGid || ""}
+                          onChange={(e) => setSelectedSheetGid(e.target.value)}
+                          className="flex-1 h-7 text-xs bg-background border border-border rounded-md px-2 font-medium focus:outline-none focus:ring-1 focus:ring-primary"
+                        >
+                          {sheetTabs.map((tab) => {
+                            const isAuto = findMatchingTabForDate(selectedDate, [tab]) !== null;
+                            return (
+                              <option key={tab.gid} value={tab.gid}>
+                                {tab.name} {isAuto ? "⚡ (Tự động chọn theo tuần)" : ""}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+
+                      {sheetTabs.find((t) => t.gid === selectedSheetGid) && (
+                        <div className="text-[10px] text-muted-foreground flex items-center justify-between pt-0.5 border-t border-border/50">
+                          <span>
+                            Sheet đang xem: <strong>{sheetTabs.find((t) => t.gid === selectedSheetGid)?.name}</strong>
+                          </span>
+                          <span className="text-emerald-600 font-bold">
+                            {trialSlots.length} Ca Trial
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Trial Slots List */}
+                    <div className="flex-1 overflow-y-auto space-y-2 no-vertical-scrollbar pr-0.5">
+                      {sheetError ? (
+                        <div className="p-4 rounded-lg bg-rose-50 dark:bg-rose-950/30 text-rose-600 border border-rose-200 dark:border-rose-900 text-xs">
+                          <p className="font-bold flex items-center gap-1 mb-1">
+                            <AlertTriangle className="h-4 w-4 shrink-0" />
+                            <span>Lỗi đọc dữ liệu Google Sheet</span>
+                          </p>
+                          <p className="text-[11px]">{sheetError}</p>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => selectedSheetGid && loadTrialSlots(selectedSheetGid)}
+                            className="mt-2 h-7 text-xs font-bold"
+                          >
+                            Thử Lại
+                          </Button>
+                        </div>
+                      ) : trialSlots.length === 0 ? (
+                        <div className="p-8 text-center text-xs text-muted-foreground">
+                          <Calendar className="h-8 w-8 mx-auto opacity-30 mb-2" />
+                          <span>Không có ca Trial nào ghi nhận trên sheet này.</span>
+                        </div>
+                      ) : (
+                        trialSlots.map((slot) => {
+                          const isSelected = selectedTrialSlot?.id === slot.id;
+                          const todayStr = format(new Date(), "yyyy-MM-dd");
+                          const isPastDate = Boolean(slot.dateStr && slot.dateStr < todayStr);
+
+                          return (
+                            <div
+                              key={slot.id}
+                              onClick={() => setSelectedTrialSlot(slot)}
+                              className={`p-2.5 rounded-lg border text-xs cursor-pointer transition-all space-y-1.5 ${
+                                isSelected
+                                  ? isPastDate
+                                    ? "border-amber-500/50 bg-amber-500/5 ring-1 ring-amber-500/20 font-bold shadow-xs"
+                                    : "border-primary bg-primary/5 ring-1 ring-primary/30 font-bold shadow-xs"
+                                  : isPastDate
+                                  ? "border-border/60 bg-muted/30 opacity-75 hover:opacity-100 hover:bg-muted/50"
+                                  : "border-border/80 hover:bg-muted/50"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="font-mono text-[11px] font-extrabold text-primary flex items-center gap-1">
+                                  <Clock className="h-3 w-3" />
+                                  {slot.displayDate || slot.dateStr} ({slot.startTime} - {slot.endTime})
+                                </span>
+
+                                <div className="flex items-center gap-1">
+                                  <span className="px-1.5 py-0.2 bg-[#000056] text-white rounded text-[8.5px] font-bold">
+                                    {slot.format}
+                                  </span>
+                                  {isPastDate && (
+                                    <span className="px-1.5 py-0.2 bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 rounded text-[9px] font-bold">
+                                      Đã Qua
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="flex items-center justify-between gap-2">
+                                <h4 className="font-bold text-xs text-foreground">
+                                  Môn: <span className="text-primary font-black">{slot.track}</span>
+                                </h4>
+                                <span className="text-[10.5px] font-bold text-emerald-600 flex items-center gap-1">
+                                  <Users className="h-3 w-3" />
+                                  {slot.students.length} Học viên
+                                </span>
+                              </div>
+
+                              {/* Student Details Preview */}
+                              {slot.students.length > 0 && (
+                                <div className="p-1.5 rounded bg-muted/60 text-[10.5px] text-muted-foreground space-y-0.5">
+                                  {slot.students.map((st, idx) => (
+                                    <p key={idx} className="line-clamp-1 font-mono text-[10px]">
+                                      • {st}
+                                    </p>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* Kit / Equipment Notes Warning */}
+                              {slot.notes && (
+                                <div className="p-1.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-[10px] font-bold flex items-start gap-1">
+                                  <Info className="h-3 w-3 shrink-0 mt-0.5" />
+                                  <span>{slot.notes}</span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  /* Manual Trial Input Form */
+                  <div className="p-4 space-y-4 flex-1">
+                    <div>
+                      <label className="text-xs font-bold text-foreground block mb-1">Ngày diễn ra ca Trial:</label>
+                      <DatePickerDropdown
+                        selectedDate={selectedDate}
+                        onSelect={(d) => setSelectedDate(d)}
+                        className="w-full justify-between"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-xs font-bold text-foreground block mb-1">Giờ bắt đầu:</label>
+                        <Input
+                          type="time"
+                          value={trialTimeStart}
+                          onChange={(e) => setTrialTimeStart(e.target.value)}
+                          className="h-8 text-xs bg-card"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-foreground block mb-1">Giờ kết thúc:</label>
+                        <Input
+                          type="time"
+                          value={trialTimeEnd}
+                          onChange={(e) => setTrialTimeEnd(e.target.value)}
+                          className="h-8 text-xs bg-card"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-foreground block mb-1">Khối môn / Chương trình:</label>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {["KIDS / TEENS", "SCRATCH / PYTHON", "WEB / GAME", "ROBOTICS / AI"].map((track) => (
+                          <button
+                            key={track}
+                            type="button"
+                            onClick={() => setTrialTrack(track)}
+                            className={`px-2.5 py-1 rounded-md text-[10.5px] font-bold border transition-all ${
+                              trialTrack === track
+                                ? "bg-[#000056] text-white border-[#000056] shadow-2xs"
+                                : "bg-card border-border text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            {track}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1042,19 +1470,31 @@ export function TeacherBookingView() {
             <div className="flex-1 overflow-y-auto p-3 space-y-4">
               {/* Target Shift Banner */}
               {targetShiftDetails && (
-                <div className="p-2.5 rounded-lg bg-primary/5 border border-primary/20 flex flex-col gap-1.5 text-xs">
+                <div
+                  className={`p-2.5 rounded-lg border flex flex-col gap-1.5 text-xs ${
+                    isTargetPastDate
+                      ? "bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-200"
+                      : "bg-primary/5 border-primary/20"
+                  }`}
+                >
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-bold text-primary">{targetShiftDetails.className}</span>
                       <span className="text-muted-foreground font-mono text-[11px]">
                         ({targetShiftDetails.displayDate}: {targetShiftDetails.startTime} - {targetShiftDetails.endTime})
                       </span>
                     </div>
-                    {activeSubTab === "examiner" && (
+
+                    {isTargetPastDate ? (
+                      <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40 text-[10.5px] font-black flex items-center gap-1 shrink-0">
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                        Ca Đã Qua Ngày (Không Thể Book)
+                      </span>
+                    ) : activeSubTab === "examiner" ? (
                       <span className="text-[10px] text-muted-foreground italic font-medium">
                         (Đã tự động loại GV chính khỏi danh sách Giám khảo)
                       </span>
-                    )}
+                    ) : null}
                   </div>
 
                   {activeSubTab !== "trial" && (selectedClassTeachers.lec || selectedClassTeachers.ta) && (
@@ -1130,11 +1570,7 @@ export function TeacherBookingView() {
                               <div className="min-w-0">
                                 <h4 className="font-bold text-xs text-foreground truncate">{teacher.fullName}</h4>
                                 <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-0.5">
-                                  <span className="font-mono px-1 py-0.2 bg-background rounded font-bold border border-border">
-                                    {teacher.code}
-                                  </span>
-                                  <span>• Có {daySessionsCount} ca tại BU</span>
-                                  <span>• Tuần: {weeklyHours}</span>
+                                  <span>Có {daySessionsCount} ca tại BU hôm nay</span>
                                 </div>
                               </div>
                             </div>
@@ -1143,6 +1579,11 @@ export function TeacherBookingView() {
                               <span className="h-7 px-2 text-[10px] font-extrabold bg-emerald-600 text-white rounded-lg flex items-center gap-1 shrink-0 shadow-2xs">
                                 <Check className="h-3 w-3" />
                                 Đã Book
+                              </span>
+                            ) : isTargetPastDate ? (
+                              <span className="h-7 px-2.5 text-[10.5px] font-bold bg-muted text-muted-foreground border border-border/80 rounded-lg flex items-center gap-1 shrink-0 opacity-70 select-none">
+                                <XCircle className="h-3 w-3" />
+                                Quá Hạn
                               </span>
                             ) : (
                               <Button
@@ -1216,10 +1657,7 @@ export function TeacherBookingView() {
                               <div className="min-w-0">
                                 <h4 className="font-bold text-xs text-foreground truncate">{teacher.fullName}</h4>
                                 <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-0.5">
-                                  <span className="font-mono px-1 py-0.2 bg-muted rounded font-bold">
-                                    {teacher.code}
-                                  </span>
-                                  <span>• Tải tuần: {weeklyHours}</span>
+                                  <span>Rảnh khung giờ này</span>
                                 </div>
                               </div>
                             </div>
@@ -1228,6 +1666,11 @@ export function TeacherBookingView() {
                               <span className="h-7 px-2 text-[10px] font-extrabold bg-emerald-600 text-white rounded-lg flex items-center gap-1 shrink-0 shadow-2xs">
                                 <Check className="h-3 w-3" />
                                 Đã Book
+                              </span>
+                            ) : isTargetPastDate ? (
+                              <span className="h-7 px-2.5 text-[10.5px] font-bold bg-muted text-muted-foreground border border-border/80 rounded-lg flex items-center gap-1 shrink-0 opacity-70 select-none">
+                                <XCircle className="h-3 w-3" />
+                                Quá Hạn
                               </span>
                             ) : (
                               <Button
