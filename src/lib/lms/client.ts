@@ -403,21 +403,15 @@ export class LmsClient {
         if (slotMs >= weekStartMs && slotMs <= weekEndMs) {
           const assignedTeachers = slot.teachers || [];
 
-          assignedTeachers.forEach((tAssigned: any) => {
-            const teacher = tAssigned.teacher;
-            if (!teacher || !teacher.id) return;
-
-            const roleRaw = tAssigned.role?.shortName || tAssigned.role?.name || "";
-            const resolvedRole = resolveDirectTeacherRole(roleRaw) || "GV";
-
+          if (assignedTeachers.length === 0) {
             schedules.push({
-              id: `${cls.id}_${slot._id}_${teacher.id}`,
-              teacherId: teacher.id,
-              teacherCode: teacher.code,
-              teacherName: teacher.fullName,
-              teacherRole: resolvedRole,
+              id: `${cls.id}_${slot._id}_unassigned`,
+              teacherId: "",
+              teacherCode: "CHƯA_CÓ",
+              teacherName: "Chưa Phân Công GV",
+              teacherRole: "CHƯA_GẮN_GV",
               title: cls.name,
-              description: "",
+              description: "Ca học chưa phân công Giảng viên/Trợ giảng",
               date: slot.date || slotTimeStr,
               startTime: slotTimeStr,
               endTime: slot.endTime || slotTimeStr,
@@ -430,7 +424,36 @@ export class LmsClient {
                 centre: { id: centreId, name: cls.centre?.name || "MindX Center" },
               },
             });
-          });
+          } else {
+            assignedTeachers.forEach((tAssigned: any) => {
+              const teacher = tAssigned.teacher;
+              if (!teacher || !teacher.id) return;
+
+              const roleRaw = tAssigned.role?.shortName || tAssigned.role?.name || "";
+              const resolvedRole = resolveDirectTeacherRole(roleRaw) || "GV";
+
+              schedules.push({
+                id: `${cls.id}_${slot._id}_${teacher.id}`,
+                teacherId: teacher.id,
+                teacherCode: teacher.code,
+                teacherName: teacher.fullName,
+                teacherRole: resolvedRole,
+                title: cls.name,
+                description: "",
+                date: slot.date || slotTimeStr,
+                startTime: slotTimeStr,
+                endTime: slot.endTime || slotTimeStr,
+                type: "CLASS_SESSION",
+                sessionIndex: (slot.index % (cls.numberOfSessions || 14)) + 1,
+                totalSessions: cls.numberOfSessions || 14,
+                classStatus: cls.status,
+                classSite: {
+                  class: { id: cls.id, name: cls.name, numberOfSessions: cls.numberOfSessions },
+                  centre: { id: centreId, name: cls.centre?.name || "MindX Center" },
+                },
+              });
+            });
+          }
         }
       });
     });

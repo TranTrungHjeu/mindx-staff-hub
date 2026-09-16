@@ -28,6 +28,10 @@ import {
   FileSpreadsheet,
   Users,
   Info,
+  Table,
+  Columns,
+  X,
+  Layers,
 } from "lucide-react";
 import {
   SheetTab,
@@ -46,6 +50,16 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { format, startOfWeek, endOfWeek, addDays, isSameDay, addWeeks, subWeeks } from "date-fns";
 import { extractHHMM, extractDatePart, formatTime } from "@/lib/date";
 import { LmsClient } from "@/lib/lms/client";
@@ -60,6 +74,50 @@ import {
 } from "@/lib/bookingStorage";
 import { DatePickerDropdown } from "@/components/ui/custom-date-picker";
 
+// Helper to compare if two trial tracks match (e.g. GB, Game Basic, WEB, CS)
+export function areTracksMatching(t1: string, t2: string): boolean {
+  if (!t1 || !t2) return false;
+  const c1 = t1.trim().toLowerCase();
+  const c2 = t2.trim().toLowerCase();
+  if (c1 === c2) return true;
+  if ((c1.includes("gb") || c1.includes("game")) && (c2.includes("gb") || c2.includes("game"))) return true;
+  if ((c1.includes("web") || c1.includes("html")) && (c2.includes("web") || c2.includes("html"))) return true;
+  if ((c1.includes("python") || c1.includes("py")) && (c2.includes("python") || c2.includes("py"))) return true;
+  return false;
+}
+
+// Convert "17:30" or "17H30" or "18:00" to minutes from midnight
+export function parseHHMMToMinutes(timeStr: string): number {
+  if (!timeStr) return 0;
+  const clean = timeStr.replace("H", ":");
+  const parts = clean.split(":");
+  if (parts.length < 2) return 0;
+  const h = parseInt(parts[0], 10) || 0;
+  const m = parseInt(parts[1], 10) || 0;
+  return h * 60 + m;
+}
+
+// Helper to find all matching consecutive 1-hour slots of the same track on the same day forming a 3h shift
+export function getShiftGroupSlots(targetSlot: TrialSlot, allSlots: TrialSlot[]): TrialSlot[] {
+  if (!targetSlot || !allSlots || allSlots.length === 0) return [targetSlot];
+
+  const matchingSlots = allSlots.filter(
+    (s) => s.dateStr === targetSlot.dateStr && areTracksMatching(s.track, targetSlot.track)
+  );
+
+  if (matchingSlots.length <= 1) return [targetSlot];
+
+  matchingSlots.sort((a, b) => parseHHMMToMinutes(a.startTime) - parseHHMMToMinutes(b.startTime));
+
+  const targetMinutes = parseHHMMToMinutes(targetSlot.startTime);
+  const group = matchingSlots.filter((s) => {
+    const sMin = parseHHMMToMinutes(s.startTime);
+    return Math.abs(sMin - targetMinutes) <= 180; // Within 3-hour shift window
+  });
+
+  return group.length > 0 ? group : [targetSlot];
+}
+
 export type ActiveSubTab = BookingType | "history";
 
 export interface ActionConfirmState {
@@ -72,6 +130,8 @@ export interface ActionConfirmState {
 interface Schedule {
   id: string;
   teacherId: string;
+  teacherName?: string;
+  teacherCode?: string;
   title: string;
   description: string;
   date: string;
@@ -127,13 +187,14 @@ export function TeacherBookingView() {
   const [trialTrack, setTrialTrack] = useState("KIDS / TEENS");
 
   // Google Sheets Trial Booking State
-  const [trialMode, setTrialMode] = useState<"SHEET" | "MANUAL">("SHEET");
   const [sheetTabs, setSheetTabs] = useState<SheetTab[]>([]);
   const [selectedSheetGid, setSelectedSheetGid] = useState<string | null>(null);
   const [trialSlots, setTrialSlots] = useState<TrialSlot[]>([]);
   const [selectedTrialSlot, setSelectedTrialSlot] = useState<TrialSlot | null>(null);
   const [isFetchingSheet, setIsFetchingSheet] = useState(false);
   const [sheetError, setSheetError] = useState<string | null>(null);
+  const [rowAssignedTeacher, setRowAssignedTeacher] = useState<Record<string, string>>({});
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Load Sheet Tabs on mount or when switching to trial subtab
   useEffect(() => {
@@ -288,13 +349,45 @@ export function TeacherBookingView() {
       setTeachersList(fetchedTeachers);
 
       const teacherIds = fetchedTeachers.map((t: any) => t.id);
-      if (teacherIds.length === 0) {
-        setSchedules([]);
-        return;
-      }
 
-      const schedulesData = await LmsClient.getTeacherSchedules(teacherIds, dateGte, dateLte);
-      setSchedules(schedulesData || []);
+      const [teacherSchedules, centerSchedules] = await Promise.all([
+        teacherIds.length > 0 ? LmsClient.getTeacherSchedules(teacherIds, dateGte, dateLte) : Promise.resolve([]),
+        LmsClient.getCenterActiveSchedules(DEFAULT_CENTRE_ID, dateGte, dateLte).catch((err) => {
+          console.warn("[TeacherBookingView] Failed to fetch center active schedules:", err);
+          return [];
+        }),
+      ]);
+
+      const map = new Map<string, Schedule>();
+
+      // Add teacher schedules first
+      (teacherSchedules || []).forEach((sch: any) => {
+        if (sch && sch.id) {
+          map.set(sch.id, sch);
+        }
+      });
+
+      // Add center schedules (including unassigned slots for Buổi 1, etc.)
+      (centerSchedules || []).forEach((sch: any) => {
+        if (!sch || !sch.id) return;
+        const classId = sch.classSite?.class?.id || sch.title;
+        const dateStr = sch.startTime ? sch.startTime.split("T")[0] : sch.date;
+        const startTime = sch.startTime;
+
+        if (!map.has(sch.id)) {
+          const existingForSlot = Array.from(map.values()).some((s) => {
+            const sClassId = s.classSite?.class?.id || s.title;
+            const sDateStr = s.startTime ? s.startTime.split("T")[0] : s.date;
+            return sClassId === classId && sDateStr === dateStr && s.startTime === startTime;
+          });
+
+          if (!existingForSlot || sch.teacherRole === "CHƯA_GẮN_GV") {
+            map.set(sch.id, sch);
+          }
+        }
+      });
+
+      setSchedules(Array.from(map.values()));
     } catch (err: any) {
       setError(err?.message || "Lỗi tải dữ liệu LMS.");
     } finally {
@@ -530,7 +623,7 @@ export function TeacherBookingView() {
   // Target shift timing details
   const targetShiftDetails = useMemo(() => {
     if (activeSubTab === "trial") {
-      if (trialMode === "SHEET" && selectedTrialSlot) {
+      if (selectedTrialSlot) {
         return {
           dateStr: selectedTrialSlot.dateStr || format(selectedDate, "yyyy-MM-dd"),
           displayDate: selectedTrialSlot.displayDate ? `${selectedTrialSlot.displayDate} (${selectedTrialSlot.day})` : format(selectedDate, "dd/MM/yyyy (EEEE)"),
@@ -568,7 +661,7 @@ export function TeacherBookingView() {
       className,
       primaryTeacherId: selectedSchedule.teacherId,
     };
-  }, [selectedSchedule, activeSubTab, selectedDate, trialMode, selectedTrialSlot, trialTimeStart, trialTimeEnd, trialTrack]);
+  }, [selectedSchedule, activeSubTab, selectedDate, selectedTrialSlot, trialTimeStart, trialTimeEnd, trialTrack]);
 
   // Check if target shift date has already passed
   const isTargetPastDate = useMemo(() => {
@@ -715,6 +808,229 @@ export function TeacherBookingView() {
 
     return { groupAtBU, groupNotAtBU };
   }, [teachersList, schedules, targetShiftDetails, searchTeacher, activeSubTab, bookingHistory, selectedSchedule]);
+
+  // Evaluates recommended teachers for any specific trial slot in Sheet Table View
+  const getSlotRecommendations = (slot: TrialSlot) => {
+    const { dateStr, startTime, endTime } = slot;
+    if (!dateStr || !startTime || !endTime) return { groupAtBU: [], groupNotAtBU: [], bestTeacherId: null };
+
+    const groupAtBU: { teacher: Teacher; daySessionsCount: number }[] = [];
+    const groupNotAtBU: { teacher: Teacher; daySessionsCount: number }[] = [];
+
+    teachersList.forEach((t) => {
+      // Filter by search query if any
+      if (searchTeacher.trim()) {
+        const q = searchTeacher.toLowerCase();
+        if (!t.fullName.toLowerCase().includes(q) && !t.code.toLowerCase().includes(q)) return;
+      }
+
+      // Teacher schedules on dateStr
+      const teacherDaySchedules = schedules.filter((s) => {
+        if (s.teacherId !== t.id) return false;
+        return getLocalDateStr(s) === dateStr;
+      });
+
+      const activeTeacherDaySchedules = teacherDaySchedules.filter((s) => !isScheduleSuspendedOrCancelled(s));
+      const activeTeacherBUDaySchedules = activeTeacherDaySchedules.filter((s) => isScheduleAtDefaultCentre(s));
+
+      // Overlap check on active LMS schedules
+      const hasLmsConflict = activeTeacherDaySchedules.some((s) => {
+        const sStart = getLocalHHMM(s.startTime);
+        const sEnd = getLocalHHMM(s.endTime);
+        if (!sStart || !sEnd) return false;
+        return sStart < endTime && startTime < sEnd;
+      });
+
+      // Overlap check on confirmed booking history
+      const hasHistoryOverlap = bookingHistory.some((rec) => {
+        if (rec.status !== "CONFIRMED") return false;
+        if (rec.assignedTeacherId !== t.id) return false;
+        if (rec.dateStr !== dateStr) return false;
+        return rec.startTime < endTime && startTime < rec.endTime;
+      });
+
+      if (hasLmsConflict || hasHistoryOverlap) return;
+
+      const isAtBU = activeTeacherBUDaySchedules.length > 0;
+      const candidateObj = {
+        teacher: t,
+        daySessionsCount: activeTeacherBUDaySchedules.length,
+      };
+
+      if (isAtBU) {
+        groupAtBU.push(candidateObj);
+      } else {
+        groupNotAtBU.push(candidateObj);
+      }
+    });
+
+    const bestTeacherId = groupAtBU.length > 0 ? groupAtBU[0].teacher.id : groupNotAtBU.length > 0 ? groupNotAtBU[0].teacher.id : null;
+
+    return { groupAtBU, groupNotAtBU, bestTeacherId };
+  };
+
+  // Assigns selected candidate teacher to a trial slot (or full 3h shift group of matching track)
+  const handleAssignTeacherToSlot = (slot: TrialSlot, teacherId: string, assignFullShift: boolean = false) => {
+    const teacher = teachersList.find((t) => t.id === teacherId);
+    if (!teacher) return;
+
+    const targetSlots = assignFullShift ? getShiftGroupSlots(slot, trialSlots) : [slot];
+    let assignedCount = 0;
+
+    targetSlots.forEach((s) => {
+      const isAlreadyBooked = bookingHistory.some(
+        (rec) =>
+          rec.status === "CONFIRMED" &&
+          rec.type === "trial" &&
+          rec.dateStr === s.dateStr &&
+          rec.startTime === s.startTime &&
+          rec.className.includes(s.track)
+      );
+
+      if (!isAlreadyBooked) {
+        saveBookingRecord({
+          type: "trial",
+          className: `Lớp Trial Sheet: ${s.track} (${s.format})`,
+          dateStr: s.dateStr,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          centreName: TARGET_CENTRE_NAME,
+          assignedTeacherId: teacher.id,
+          assignedTeacherName: teacher.fullName,
+          assignedTeacherCode: teacher.code,
+          notes: s.notes ? `Sheet note: ${s.notes}` : `Ca Trial ${s.track}`,
+          status: "CONFIRMED",
+        });
+        assignedCount++;
+      }
+    });
+
+    setBookingHistory(getLocalBookings());
+
+    if (assignedCount > 1) {
+      setToastMessage(`Đã chốt book GV ${teacher.fullName} cho CẢ CA 3H (${assignedCount} ca Trial ${slot.track}) ngày ${slot.displayDate || slot.dateStr}!`);
+    } else {
+      setToastMessage(`Đã chốt book GV ${teacher.fullName} cho ca Trial ${slot.track} (${slot.displayDate || slot.dateStr})!`);
+    }
+    setTimeout(() => setToastMessage(null), 4000);
+  };
+
+  // Batch auto-assign optimal teachers for all unassigned trial slots in the sheet, grouping 3h shifts of matching tracks
+  const handleAutoAssignAllTrialSlots = () => {
+    let count = 0;
+    const processedSlotIds = new Set<string>();
+
+    // Step 1: Process 3-hour shift blocks of matching tracks first
+    trialSlots.forEach((slot) => {
+      if (processedSlotIds.has(slot.id)) return;
+
+      const group = getShiftGroupSlots(slot, trialSlots);
+      const unbookedGroup = group.filter(
+        (s) =>
+          !bookingHistory.some(
+            (rec) =>
+              rec.status === "CONFIRMED" &&
+              rec.type === "trial" &&
+              rec.dateStr === s.dateStr &&
+              rec.startTime === s.startTime &&
+              rec.className.includes(s.track)
+          )
+      );
+
+      if (unbookedGroup.length > 1) {
+        // Find best teacher who is available for ALL slots in the 3-hour group
+        let optimalTeacherId: string | null = null;
+        const { groupAtBU, groupNotAtBU } = getSlotRecommendations(slot);
+        const candidates = [...groupAtBU, ...groupNotAtBU];
+
+        for (const cand of candidates) {
+          const tId = cand.teacher.id;
+          const isFreeForGroup = unbookedGroup.every((s) => {
+            const recs = getSlotRecommendations(s);
+            return (
+              recs.groupAtBU.some((c) => c.teacher.id === tId) ||
+              recs.groupNotAtBU.some((c) => c.teacher.id === tId)
+            );
+          });
+
+          if (isFreeForGroup) {
+            optimalTeacherId = tId;
+            break;
+          }
+        }
+
+        if (optimalTeacherId) {
+          const teacher = teachersList.find((t) => t.id === optimalTeacherId);
+          if (teacher) {
+            unbookedGroup.forEach((s) => {
+              saveBookingRecord({
+                type: "trial",
+                className: `Lớp Trial Sheet: ${s.track} (${s.format})`,
+                dateStr: s.dateStr,
+                startTime: s.startTime,
+                endTime: s.endTime,
+                centreName: TARGET_CENTRE_NAME,
+                assignedTeacherId: teacher.id,
+                assignedTeacherName: teacher.fullName,
+                assignedTeacherCode: teacher.code,
+                notes: s.notes ? `Sheet note: ${s.notes}` : `Ca Trial ${s.track}`,
+                status: "CONFIRMED",
+              });
+              processedSlotIds.add(s.id);
+              count++;
+            });
+          }
+        }
+      }
+    });
+
+    // Step 2: Process remaining single slots
+    trialSlots.forEach((slot) => {
+      if (processedSlotIds.has(slot.id)) return;
+
+      const isAlreadyBooked = bookingHistory.some(
+        (rec) =>
+          rec.status === "CONFIRMED" &&
+          rec.type === "trial" &&
+          rec.dateStr === slot.dateStr &&
+          rec.startTime === slot.startTime &&
+          rec.className.includes(slot.track)
+      );
+
+      if (!isAlreadyBooked) {
+        const { bestTeacherId } = getSlotRecommendations(slot);
+        const selectedId = rowAssignedTeacher[slot.id] || bestTeacherId;
+        if (selectedId) {
+          const teacher = teachersList.find((t) => t.id === selectedId);
+          if (teacher) {
+            saveBookingRecord({
+              type: "trial",
+              className: `Lớp Trial Sheet: ${slot.track} (${slot.format})`,
+              dateStr: slot.dateStr,
+              startTime: slot.startTime,
+              endTime: slot.endTime,
+              centreName: TARGET_CENTRE_NAME,
+              assignedTeacherId: teacher.id,
+              assignedTeacherName: teacher.fullName,
+              assignedTeacherCode: teacher.code,
+              notes: slot.notes ? `Sheet note: ${slot.notes}` : `Ca Trial ${slot.track}`,
+              status: "CONFIRMED",
+            });
+            count++;
+          }
+        }
+      }
+    });
+
+    setBookingHistory(getLocalBookings());
+    if (count > 0) {
+      setToastMessage(`Tự động chốt book thành công ${count} ca Trial cho các giảng viên phù hợp nhất (ưu tiên ghép ca 3h trùng môn)!`);
+      setTimeout(() => setToastMessage(null), 4000);
+    } else {
+      setToastMessage("Tất cả các ca Trial đều đã được gắn GV hoặc không có GV rảnh.");
+      setTimeout(() => setToastMessage(null), 3000);
+    }
+  };
 
   // Handle confirming a booking
   const handleConfirmBooking = () => {
@@ -1074,6 +1390,387 @@ export function TeacherBookingView() {
             )}
           </div>
         </div>
+      ) : activeSubTab === "trial" ? (
+        /* DEDICATED SUB-TAB 2: FULL GOOGLE SHEETS TRIAL TABLE VIEW WITH SMART AUTO-MATCH */
+        <div className="flex-1 flex flex-col bg-card border border-border rounded-xl shadow-2xs overflow-hidden">
+          {/* Toast Notification Banner */}
+          {toastMessage && (
+            <div className="bg-emerald-600 text-white text-xs font-bold px-4 py-2 flex items-center justify-between shadow-md animate-in fade-in slide-in-from-top duration-200">
+              <span className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 shrink-0" />
+                <span>{toastMessage}</span>
+              </span>
+              <button onClick={() => setToastMessage(null)} className="text-white hover:text-emerald-200 font-bold p-0.5" title="Đóng">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Sheet Table Header Toolbar */}
+          <div className="p-3 bg-muted/60 border-b border-border flex flex-wrap items-center justify-between gap-3 shrink-0">
+            <div className="flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5 text-primary" />
+              <div>
+                <h2 className="text-xs font-black text-foreground flex items-center gap-1.5">
+                  <span>Bảng Ca Dạy Trial Từ Google Sheet</span>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 text-[10px] font-bold">
+                    {trialSlots.length} Ca Trial
+                  </span>
+                </h2>
+                <p className="text-[10.5px] text-muted-foreground mt-0.5">
+                  Đang xem Sheet: <strong className="text-foreground">{sheetTabs.find((t) => t.gid === selectedSheetGid)?.name || "Tuần này"}</strong>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Batch Auto Assign All Button */}
+              {trialSlots.length > 0 && (
+                <Button
+                  size="sm"
+                  onClick={handleAutoAssignAllTrialSlots}
+                  className="h-8 px-3 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs rounded-lg flex items-center gap-1.5"
+                  title="Tự động phân công giảng viên phù hợp nhất cho tất cả các ca Trial chưa chốt"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <span>Tự Động Gắn Tất Cả Ca</span>
+                </Button>
+              )}
+
+              {/* Sheet Dropdown */}
+              <Select
+                value={selectedSheetGid || ""}
+                onValueChange={(val) => setSelectedSheetGid(val)}
+              >
+                <SelectTrigger className="h-8 text-xs font-bold w-[280px] bg-card border-border rounded-lg shadow-2xs">
+                  <SelectValue placeholder="Chọn tuần..." />
+                </SelectTrigger>
+                <SelectContent className="max-h-72">
+                  <SelectGroup>
+                    <SelectLabel className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                      Danh sách Tab Sheet
+                    </SelectLabel>
+                    {sheetTabs.map((tab) => {
+                      const isAuto = findMatchingTabForDate(selectedDate, [tab]) !== null;
+                      return (
+                        <SelectItem key={tab.gid} value={tab.gid} className="text-xs font-bold py-1.5 cursor-pointer">
+                          <div className="flex items-center justify-between w-full gap-2">
+                            <span>{tab.name}</span>
+                            {isAuto && (
+                              <span className="text-[9.5px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 font-extrabold border border-emerald-500/20">
+                                Tự động
+                              </span>
+                            )}
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+
+              {/* Refresh Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => selectedSheetGid && loadTrialSlots(selectedSheetGid)}
+                className="h-8 px-2 text-xs font-bold"
+                title="Tải lại dữ liệu từ Google Sheet"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${isFetchingSheet ? "animate-spin text-primary" : ""}`} />
+              </Button>
+
+              {/* Link Sheet Gốc */}
+              {selectedSheetGid && (
+                <a
+                  href={`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/htmlview?gid=${selectedSheetGid}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="h-8 px-2.5 bg-muted/80 hover:bg-muted border border-border rounded-lg text-xs font-bold text-primary flex items-center gap-1"
+                  title="Mở Google Sheet trên tab mới"
+                >
+                  <span>Link Sheet Gốc</span>
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              )}
+            </div>
+          </div>
+
+          {/* Interactive Sheet Table Body */}
+          <div className="flex-1 overflow-y-auto p-3">
+            {isFetchingSheet ? (
+              <div className="p-16 text-center text-xs text-muted-foreground">
+                <RefreshCw className="h-8 w-8 mx-auto animate-spin text-primary mb-2" />
+                <span>Đang tải và phân tích dữ liệu ca Trial từ Google Sheet...</span>
+              </div>
+            ) : sheetError ? (
+              <div className="p-6 rounded-lg bg-rose-50 dark:bg-rose-950/30 text-rose-600 border border-rose-200 dark:border-rose-900 text-xs">
+                <p className="font-bold flex items-center gap-1 mb-1">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <span>Lỗi đọc dữ liệu Google Sheet</span>
+                </p>
+                <p className="text-[11px]">{sheetError}</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => selectedSheetGid && loadTrialSlots(selectedSheetGid)}
+                  className="mt-2 h-7 text-xs font-bold"
+                >
+                  Thử Lại
+                </Button>
+              </div>
+            ) : trialSlots.length === 0 ? (
+              <div className="p-16 text-center text-xs text-muted-foreground">
+                <Calendar className="h-10 w-10 mx-auto opacity-30 mb-2" />
+                <span>Không tìm thấy ca Trial nào trên Sheet này.</span>
+              </div>
+            ) : (
+              <div className="border border-border rounded-lg overflow-hidden bg-card text-xs">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-muted/70 text-muted-foreground font-bold border-b border-border text-[11px]">
+                      <th className="p-2.5 w-32">Thứ & Ngày</th>
+                      <th className="p-2.5 w-28">Khung Giờ</th>
+                      <th className="p-2.5 w-32">Môn & Hình Thức</th>
+                      <th className="p-2.5">Học Viên Đăng Ký</th>
+                      <th className="p-2.5">Ghi Chú Kit / Thiết Bị</th>
+                      <th className="p-2.5 w-80">Gợi Ý Giáo Viên Hợp Lý</th>
+                      <th className="p-2.5 text-right w-36">Thao Tác Gắn GV</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {trialSlots.map((slot) => {
+                      const todayStr = format(new Date(), "yyyy-MM-dd");
+                      const isPastDate = Boolean(slot.dateStr && slot.dateStr < todayStr);
+
+                      // Check if slot is already booked in confirmed history
+                      const bookedRecord = bookingHistory.find(
+                        (rec) =>
+                          rec.status === "CONFIRMED" &&
+                          rec.type === "trial" &&
+                          rec.dateStr === slot.dateStr &&
+                          rec.startTime === slot.startTime &&
+                          rec.className.includes(slot.track)
+                      );
+
+                      const { groupAtBU, groupNotAtBU, bestTeacherId } = getSlotRecommendations(slot);
+                      const selectedTeacherId = rowAssignedTeacher[slot.id] || bestTeacherId || "";
+
+                      return (
+                        <tr
+                          key={slot.id}
+                          className={`hover:bg-muted/40 transition-colors ${
+                            bookedRecord ? "bg-emerald-500/5" : isPastDate ? "opacity-75 bg-muted/20" : ""
+                          }`}
+                        >
+                          {/* Thứ & Ngày */}
+                          <td className="p-2.5 font-bold text-foreground">
+                            <div className="flex flex-col">
+                              <span className="text-xs">{slot.day}</span>
+                              <span className="font-mono text-[10.5px] text-muted-foreground">{slot.displayDate || slot.dateStr}</span>
+                            </div>
+                          </td>
+
+                          {/* Khung Giờ */}
+                          <td className="p-2.5 font-mono text-[11px] font-extrabold text-primary">
+                            <div className="flex flex-col">
+                              <span>{slot.startTime} - {slot.endTime}</span>
+                              <span className="text-[9.5px] font-normal text-muted-foreground">({slot.timeRaw})</span>
+                            </div>
+                          </td>
+
+                          {/* Môn & Hình Thức */}
+                          <td className="p-2.5">
+                            <span className="font-bold text-xs text-foreground block">{slot.track}</span>
+                            <div className="flex flex-wrap items-center gap-1 mt-0.5">
+                              <span className="px-1.5 py-0.2 bg-[#000056] text-white rounded text-[8.5px] font-bold inline-block">
+                                {slot.format}
+                              </span>
+                              {getShiftGroupSlots(slot, trialSlots).length > 1 && (
+                                <span
+                                  className="px-1.5 py-0.2 bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-500/20 rounded text-[8.5px] font-extrabold flex items-center gap-1 shrink-0"
+                                  title={`Ca 3 tiếng liên tục trùng môn ${slot.track} (${getShiftGroupSlots(slot, trialSlots).length} ca)`}
+                                >
+                                  <Layers className="h-2.5 w-2.5 text-purple-600 shrink-0" />
+                                  <span>Ca 3h trùng môn ({getShiftGroupSlots(slot, trialSlots).length} ca)</span>
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Học Viên Đăng Ký */}
+                          <td className="p-2.5 text-[11px]">
+                            {slot.students.length === 0 ? (
+                              <span className="text-muted-foreground italic">—</span>
+                            ) : (
+                              <div className="space-y-0.5">
+                                <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
+                                  <Users className="h-3 w-3" /> {slot.students.length} Học viên:
+                                </span>
+                                {slot.students.map((st, i) => (
+                                  <p key={i} className="font-mono text-[10px] text-muted-foreground line-clamp-1">• {st}</p>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Ghi Chú Kit / Thiết Bị */}
+                          <td className="p-2.5 text-[11px]">
+                            {slot.notes ? (
+                              <div className="p-1.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-[10px] font-bold flex items-start gap-1">
+                                <Info className="h-3 w-3 shrink-0 mt-0.5" />
+                                <span>{slot.notes}</span>
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground italic">—</span>
+                            )}
+                          </td>
+
+                          {/* Gợi Ý Giáo Viên Hợp Lý */}
+                          <td className="p-2.5">
+                            {bookedRecord ? (
+                              <div className="flex items-center gap-1.5 p-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-xs font-bold">
+                                <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                                <div>
+                                  <span>{bookedRecord.assignedTeacherName}</span>
+                                  <span className="font-mono text-[10px] text-muted-foreground ml-1">({bookedRecord.assignedTeacherCode})</span>
+                                </div>
+                              </div>
+                            ) : (
+                              <Select
+                                value={selectedTeacherId || ""}
+                                onValueChange={(val) =>
+                                  setRowAssignedTeacher((prev) => ({
+                                    ...prev,
+                                    [slot.id]: val,
+                                  }))
+                                }
+                              >
+                                <SelectTrigger className="w-full h-8 text-xs font-bold min-w-[280px] bg-card border-border rounded-lg shadow-2xs">
+                                  <SelectValue placeholder="Chọn giáo viên dạy ca này..." />
+                                </SelectTrigger>
+                                <SelectContent className="max-h-64 z-[100]">
+                                  {groupAtBU.length === 0 && groupNotAtBU.length === 0 ? (
+                                    <div className="p-3 text-center text-xs text-muted-foreground italic font-semibold">
+                                      Không có GV rảnh khung giờ này
+                                    </div>
+                                  ) : (
+                                    <>
+                                      {groupAtBU.length > 0 && (
+                                        <SelectGroup>
+                                          <SelectLabel className="text-[10.5px] font-extrabold text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded my-0.5 border border-emerald-500/20">
+                                            [Ưu Tiên 1] GV Có Mặt Tại BU
+                                          </SelectLabel>
+                                          {groupAtBU.map((c) => (
+                                            <SelectItem key={c.teacher.id} value={c.teacher.id} className="text-xs font-semibold py-1.5 cursor-pointer">
+                                              <div className="flex items-center justify-between w-full gap-2">
+                                                <span className="font-bold text-foreground">{c.teacher.fullName}</span>
+                                                <span className="text-[9.5px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold border border-emerald-500/20">
+                                                  {c.daySessionsCount} ca tại BU
+                                                </span>
+                                              </div>
+                                            </SelectItem>
+                                          ))}
+                                        </SelectGroup>
+                                      )}
+
+                                      {groupAtBU.length > 0 && groupNotAtBU.length > 0 && (
+                                        <SelectSeparator className="my-1" />
+                                      )}
+
+                                      {groupNotAtBU.length > 0 && (
+                                        <SelectGroup>
+                                          <SelectLabel className="text-[10.5px] font-extrabold text-blue-700 dark:text-blue-400 bg-blue-500/10 px-2 py-1 rounded my-0.5 border border-blue-500/20">
+                                            [Cụm 2] GV Rảnh
+                                          </SelectLabel>
+                                          {groupNotAtBU.map((c) => (
+                                            <SelectItem key={c.teacher.id} value={c.teacher.id} className="text-xs font-semibold py-1.5 cursor-pointer">
+                                              <div className="flex items-center justify-between w-full gap-2">
+                                                <span className="font-bold text-foreground">{c.teacher.fullName}</span>
+                                                <span className="text-[9.5px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 font-bold border border-blue-500/20">
+                                                  Rảnh
+                                                </span>
+                                              </div>
+                                            </SelectItem>
+                                          ))}
+                                        </SelectGroup>
+                                      )}
+                                    </>
+                                  )}
+                                </SelectContent>
+                              </Select>
+                            )}
+                          </td>
+
+                          {/* Thao Tác Gắn GV */}
+                          <td className="p-2.5 text-right">
+                            {bookedRecord ? (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => requestCancelBooking(bookedRecord.id, `${slot.track} — ${bookedRecord.assignedTeacherName}`)}
+                                className="h-7 px-2 text-xs font-bold text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg"
+                              >
+                                <XCircle className="h-3.5 w-3.5 mr-1" />
+                                Hủy Book
+                              </Button>
+                            ) : (
+                              <div className="flex flex-col items-end gap-1">
+                                {getShiftGroupSlots(slot, trialSlots).length > 1 ? (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      disabled={!selectedTeacherId || isPastDate}
+                                      onClick={() => handleAssignTeacherToSlot(slot, selectedTeacherId, true)}
+                                      className={`h-7 px-2.5 text-xs font-bold text-white shadow-2xs rounded-lg ${
+                                        isPastDate
+                                          ? "bg-gray-400 cursor-not-allowed"
+                                          : "bg-purple-700 hover:bg-purple-800"
+                                      }`}
+                                      title={`Gắn GV này cho CẢ CA 3H (${getShiftGroupSlots(slot, trialSlots).length} ca Trial ${slot.track})`}
+                                    >
+                                      <Layers className="h-3.5 w-3.5 mr-1" />
+                                      Gắn Ca 3h ({getShiftGroupSlots(slot, trialSlots).length} ca)
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      disabled={!selectedTeacherId || isPastDate}
+                                      onClick={() => handleAssignTeacherToSlot(slot, selectedTeacherId, false)}
+                                      className="h-6 px-2 text-[10.5px] font-bold text-muted-foreground hover:text-foreground rounded-md"
+                                      title="Chỉ gắn GV này cho ca 1 tiếng hiện tại"
+                                    >
+                                      <UserCheck className="h-3 w-3 mr-1" />
+                                      Chỉ Gắn 1 Ca
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    disabled={!selectedTeacherId || isPastDate}
+                                    onClick={() => handleAssignTeacherToSlot(slot, selectedTeacherId, false)}
+                                    className={`h-7 px-2.5 text-xs font-bold text-white shadow-2xs rounded-lg ${
+                                      isPastDate
+                                        ? "bg-gray-400 cursor-not-allowed"
+                                        : "bg-[#000056] hover:bg-[#000040]"
+                                    }`}
+                                  >
+                                    <UserCheck className="h-3.5 w-3.5 mr-1" />
+                                    Gắn GV Này
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
       ) : (
         /* SUB-TABS 1, 2, 3: 2-Column Booking Interface */
         <div className="flex-1 flex flex-col lg:flex-row gap-3 min-h-0 overflow-hidden">
@@ -1083,15 +1780,13 @@ export function TeacherBookingView() {
               <span className="flex items-center gap-1.5 truncate">
                 <BookOpen className="h-4 w-4 text-primary shrink-0" />
                 {activeSubTab === "substitute" && "Ca học cần tìm GV dạy thay"}
-                {activeSubTab === "trial" && "Thiết lập ca dạy Trial"}
                 {activeSubTab === "examiner" && "Lớp học tới Buổi 14 (Chấm thi)"}
               </span>
               <span className="font-mono text-[10px] text-muted-foreground shrink-0">Tuần: {weekStr}</span>
             </div>
 
-            {/* Subtab 1 & 3: List of Schedules with Search Bar */}
-            {activeSubTab !== "trial" ? (
-              <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            {/* List of Schedules with Search Bar */}
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
                 {/* Search Bar for Class Code / Class Name */}
                 <div className="p-2 bg-muted/40 border-b border-border/70 shrink-0">
                   <div className="relative">
@@ -1107,10 +1802,10 @@ export function TeacherBookingView() {
                       <button
                         type="button"
                         onClick={() => setSearchClass("")}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs font-bold p-0.5"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5"
                         title="Xóa từ khóa tìm kiếm"
                       >
-                        ✕
+                        <X className="h-3.5 w-3.5" />
                       </button>
                     )}
                   </div>
@@ -1171,6 +1866,11 @@ export function TeacherBookingView() {
                                 <XCircle className="h-2.5 w-2.5" />
                                 <span>Đã Qua</span>
                               </span>
+                            ) : sch.teacherRole === "CHƯA_GẮN_GV" || !sch.teacherId ? (
+                              <span className="px-1.5 py-0.2 bg-rose-500/15 text-rose-700 dark:text-rose-400 border border-rose-500/30 rounded text-[8.5px] font-extrabold flex items-center gap-0.5">
+                                <AlertTriangle className="h-2.5 w-2.5 shrink-0 text-rose-600" />
+                                <span>Chưa có GV</span>
+                              </span>
                             ) : activeSubTab === "examiner" ? (
                               <span className="px-1.5 py-0.2 bg-[#000056] text-white rounded text-[8.5px] font-bold">
                                 Buổi 14/14
@@ -1182,6 +1882,15 @@ export function TeacherBookingView() {
 
                           <div className="flex items-center justify-between text-[10.5px] text-muted-foreground pt-1 border-t border-border/40">
                             <span>Lớp: Buổi {sIdx}/{total}</span>
+                            {sch.teacherRole === "CHƯA_GẮN_GV" || !sch.teacherId ? (
+                              <span className="text-[10px] font-extrabold text-rose-600 dark:text-rose-400">
+                                Chưa phân công GV
+                              </span>
+                            ) : (
+                              <span className="font-mono text-[10px] truncate max-w-[140px]">
+                                {sch.teacherName || teachersList.find((t) => t.id === sch.teacherId)?.fullName || "Giảng viên"} ({sch.teacherRole || "GV"})
+                              </span>
+                            )}
                           </div>
                         </div>
                       );
@@ -1189,258 +1898,6 @@ export function TeacherBookingView() {
                   )}
                 </div>
               </div>
-            ) : (
-              /* Subtab 2: Google Sheets Trial Reader & Manual Input */
-              <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-                {/* Header Mode Switcher (Google Sheet vs Manual) */}
-                <div className="p-2 bg-muted/40 border-b border-border flex items-center justify-between gap-1 shrink-0">
-                  <div className="flex items-center bg-background p-0.5 rounded-lg border border-border text-[11px] font-bold">
-                    <button
-                      type="button"
-                      onClick={() => setTrialMode("SHEET")}
-                      className={`flex items-center gap-1 px-2.5 py-1 rounded-md transition-all ${
-                        trialMode === "SHEET"
-                          ? "bg-[#000056] text-white shadow-2xs"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      <FileSpreadsheet className="h-3 w-3" />
-                      <span>Từ Google Sheet</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setTrialMode("MANUAL")}
-                      className={`flex items-center gap-1 px-2.5 py-1 rounded-md transition-all ${
-                        trialMode === "MANUAL"
-                          ? "bg-[#000056] text-white shadow-2xs"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      <span>Nhập Thủ Công</span>
-                    </button>
-                  </div>
-
-                  {trialMode === "SHEET" && selectedSheetGid && (
-                    <a
-                      href={`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/htmlview?gid=${selectedSheetGid}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[10.5px] text-primary hover:underline font-bold flex items-center gap-1 truncate"
-                      title="Mở Google Sheet trên tab mới"
-                    >
-                      <span>Link Sheet Gốc</span>
-                      <ExternalLink className="h-3 w-3 shrink-0" />
-                    </a>
-                  )}
-                </div>
-
-                {trialMode === "SHEET" ? (
-                  <div className="flex-1 flex flex-col min-h-0 overflow-hidden p-2 space-y-2">
-                    {/* Sheet Tab Selector Dropdown & Refresh Bar */}
-                    <div className="p-2 rounded-lg border border-border bg-card space-y-1.5 shrink-0">
-                      <div className="flex items-center justify-between gap-1 text-[11px]">
-                        <label className="font-bold text-foreground flex items-center gap-1">
-                          <FileSpreadsheet className="h-3.5 w-3.5 text-primary" />
-                          <span>Chọn Sheet Tuần:</span>
-                        </label>
-                        {isFetchingSheet ? (
-                          <span className="text-[10px] text-primary animate-pulse font-bold flex items-center gap-1">
-                            <RefreshCw className="h-3 w-3 animate-spin" /> Đang tải dữ liệu...
-                          </span>
-                        ) : (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => selectedSheetGid && loadTrialSlots(selectedSheetGid)}
-                            className="h-6 px-1.5 text-[10.5px] font-bold text-muted-foreground hover:text-foreground"
-                            title="Tải lại dữ liệu Sheet"
-                          >
-                            <RefreshCw className="h-3 w-3 mr-1" />
-                            Làm mới
-                          </Button>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-1.5">
-                        <select
-                          value={selectedSheetGid || ""}
-                          onChange={(e) => setSelectedSheetGid(e.target.value)}
-                          className="flex-1 h-7 text-xs bg-background border border-border rounded-md px-2 font-medium focus:outline-none focus:ring-1 focus:ring-primary"
-                        >
-                          {sheetTabs.map((tab) => {
-                            const isAuto = findMatchingTabForDate(selectedDate, [tab]) !== null;
-                            return (
-                              <option key={tab.gid} value={tab.gid}>
-                                {tab.name} {isAuto ? "⚡ (Tự động chọn theo tuần)" : ""}
-                              </option>
-                            );
-                          })}
-                        </select>
-                      </div>
-
-                      {sheetTabs.find((t) => t.gid === selectedSheetGid) && (
-                        <div className="text-[10px] text-muted-foreground flex items-center justify-between pt-0.5 border-t border-border/50">
-                          <span>
-                            Sheet đang xem: <strong>{sheetTabs.find((t) => t.gid === selectedSheetGid)?.name}</strong>
-                          </span>
-                          <span className="text-emerald-600 font-bold">
-                            {trialSlots.length} Ca Trial
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Trial Slots List */}
-                    <div className="flex-1 overflow-y-auto space-y-2 no-vertical-scrollbar pr-0.5">
-                      {sheetError ? (
-                        <div className="p-4 rounded-lg bg-rose-50 dark:bg-rose-950/30 text-rose-600 border border-rose-200 dark:border-rose-900 text-xs">
-                          <p className="font-bold flex items-center gap-1 mb-1">
-                            <AlertTriangle className="h-4 w-4 shrink-0" />
-                            <span>Lỗi đọc dữ liệu Google Sheet</span>
-                          </p>
-                          <p className="text-[11px]">{sheetError}</p>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => selectedSheetGid && loadTrialSlots(selectedSheetGid)}
-                            className="mt-2 h-7 text-xs font-bold"
-                          >
-                            Thử Lại
-                          </Button>
-                        </div>
-                      ) : trialSlots.length === 0 ? (
-                        <div className="p-8 text-center text-xs text-muted-foreground">
-                          <Calendar className="h-8 w-8 mx-auto opacity-30 mb-2" />
-                          <span>Không có ca Trial nào ghi nhận trên sheet này.</span>
-                        </div>
-                      ) : (
-                        trialSlots.map((slot) => {
-                          const isSelected = selectedTrialSlot?.id === slot.id;
-                          const todayStr = format(new Date(), "yyyy-MM-dd");
-                          const isPastDate = Boolean(slot.dateStr && slot.dateStr < todayStr);
-
-                          return (
-                            <div
-                              key={slot.id}
-                              onClick={() => setSelectedTrialSlot(slot)}
-                              className={`p-2.5 rounded-lg border text-xs cursor-pointer transition-all space-y-1.5 ${
-                                isSelected
-                                  ? isPastDate
-                                    ? "border-amber-500/50 bg-amber-500/5 ring-1 ring-amber-500/20 font-bold shadow-xs"
-                                    : "border-primary bg-primary/5 ring-1 ring-primary/30 font-bold shadow-xs"
-                                  : isPastDate
-                                  ? "border-border/60 bg-muted/30 opacity-75 hover:opacity-100 hover:bg-muted/50"
-                                  : "border-border/80 hover:bg-muted/50"
-                              }`}
-                            >
-                              <div className="flex items-center justify-between gap-1">
-                                <span className="font-mono text-[11px] font-extrabold text-primary flex items-center gap-1">
-                                  <Clock className="h-3 w-3" />
-                                  {slot.displayDate || slot.dateStr} ({slot.startTime} - {slot.endTime})
-                                </span>
-
-                                <div className="flex items-center gap-1">
-                                  <span className="px-1.5 py-0.2 bg-[#000056] text-white rounded text-[8.5px] font-bold">
-                                    {slot.format}
-                                  </span>
-                                  {isPastDate && (
-                                    <span className="px-1.5 py-0.2 bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 rounded text-[9px] font-bold">
-                                      Đã Qua
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div className="flex items-center justify-between gap-2">
-                                <h4 className="font-bold text-xs text-foreground">
-                                  Môn: <span className="text-primary font-black">{slot.track}</span>
-                                </h4>
-                                <span className="text-[10.5px] font-bold text-emerald-600 flex items-center gap-1">
-                                  <Users className="h-3 w-3" />
-                                  {slot.students.length} Học viên
-                                </span>
-                              </div>
-
-                              {/* Student Details Preview */}
-                              {slot.students.length > 0 && (
-                                <div className="p-1.5 rounded bg-muted/60 text-[10.5px] text-muted-foreground space-y-0.5">
-                                  {slot.students.map((st, idx) => (
-                                    <p key={idx} className="line-clamp-1 font-mono text-[10px]">
-                                      • {st}
-                                    </p>
-                                  ))}
-                                </div>
-                              )}
-
-                              {/* Kit / Equipment Notes Warning */}
-                              {slot.notes && (
-                                <div className="p-1.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-[10px] font-bold flex items-start gap-1">
-                                  <Info className="h-3 w-3 shrink-0 mt-0.5" />
-                                  <span>{slot.notes}</span>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  /* Manual Trial Input Form */
-                  <div className="p-4 space-y-4 flex-1">
-                    <div>
-                      <label className="text-xs font-bold text-foreground block mb-1">Ngày diễn ra ca Trial:</label>
-                      <DatePickerDropdown
-                        selectedDate={selectedDate}
-                        onSelect={(d) => setSelectedDate(d)}
-                        className="w-full justify-between"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-xs font-bold text-foreground block mb-1">Giờ bắt đầu:</label>
-                        <Input
-                          type="time"
-                          value={trialTimeStart}
-                          onChange={(e) => setTrialTimeStart(e.target.value)}
-                          className="h-8 text-xs bg-card"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-bold text-foreground block mb-1">Giờ kết thúc:</label>
-                        <Input
-                          type="time"
-                          value={trialTimeEnd}
-                          onChange={(e) => setTrialTimeEnd(e.target.value)}
-                          className="h-8 text-xs bg-card"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="text-xs font-bold text-foreground block mb-1">Khối môn / Chương trình:</label>
-                      <div className="flex gap-1.5 flex-wrap">
-                        {["KIDS / TEENS", "SCRATCH / PYTHON", "WEB / GAME", "ROBOTICS / AI"].map((track) => (
-                          <button
-                            key={track}
-                            type="button"
-                            onClick={() => setTrialTrack(track)}
-                            className={`px-2.5 py-1 rounded-md text-[10.5px] font-bold border transition-all ${
-                              trialTrack === track
-                                ? "bg-[#000056] text-white border-[#000056] shadow-2xs"
-                                : "bg-card border-border text-muted-foreground hover:text-foreground"
-                            }`}
-                          >
-                            {track}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
 
           {/* Right Column: Smart Candidate Matrix Grouped by Location Availability */}
@@ -1450,7 +1907,7 @@ export function TeacherBookingView() {
               <div className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-primary" />
                 <span className="font-bold text-xs text-foreground">
-                  Gợi Ý Giảng Viên Rảnh Giờ (Thủ Dầu Một)
+                  Gợi Ý Giảng Viên Rảnh (Thủ Dầu Một)
                 </span>
               </div>
 
@@ -1497,7 +1954,7 @@ export function TeacherBookingView() {
                     ) : null}
                   </div>
 
-                  {activeSubTab !== "trial" && (selectedClassTeachers.lec || selectedClassTeachers.ta) && (
+                  {(selectedClassTeachers.lec || selectedClassTeachers.ta) && (
                     <div className="flex flex-wrap items-center gap-3 pt-1.5 border-t border-primary/15 text-[11px]">
                       {selectedClassTeachers.lec && (
                         <div className="flex items-center gap-1 font-medium text-foreground">
@@ -1634,7 +2091,7 @@ export function TeacherBookingView() {
                 {!isGroup2Collapsed && (
                   teacherRecommendations.groupNotAtBU.length === 0 ? (
                     <div className="p-3 rounded-lg bg-muted/40 text-[11px] text-muted-foreground italic text-center">
-                      Không tìm thấy giảng viên khác rảnh giờ.
+                      Không tìm thấy giảng viên khác rảnh.
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -1791,8 +2248,9 @@ export function TeacherBookingView() {
                         {actionConfirm.recordTitle}
                       </p>
                     )}
-                    <p className="text-rose-600 dark:text-rose-400 text-[11px] font-medium pt-1">
-                      ⚠️ Thao tác này sẽ dọn dẹp bản ghi và <strong>không thể hoàn tác</strong>.
+                    <p className="text-rose-600 dark:text-rose-400 text-[11px] font-medium pt-1 flex items-center gap-1">
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-rose-500" />
+                      <span>Thao tác này sẽ dọn dẹp bản ghi và <strong>không thể hoàn tác</strong>.</span>
                     </p>
                   </>
                 )}
@@ -1806,8 +2264,9 @@ export function TeacherBookingView() {
                       </strong>{" "}
                       nhật ký ca ĐÃ HỦY?
                     </p>
-                    <p className="text-rose-600 dark:text-rose-400 text-[11px] font-medium pt-1">
-                      ⚠️ Tất cả các ca đã hủy sẽ bị loại bỏ khỏi bộ nhớ local và Cloud storage.
+                    <p className="text-rose-600 dark:text-rose-400 text-[11px] font-medium pt-1 flex items-center gap-1">
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-rose-500" />
+                      <span>Tất cả các ca đã hủy sẽ bị loại bỏ khỏi bộ nhớ local và Cloud storage.</span>
                     </p>
                   </>
                 )}

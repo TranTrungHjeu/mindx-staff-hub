@@ -170,3 +170,89 @@ code, kbd, samp, pre, .font-mono {
 .animate-drawer-backdrop {
   animation: fadeInOverlay 0.25s ease-out forwards;
 }
+
+/* Custom Unified Select Dropdown & Option Item Styling */
+select {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23000056'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2.5' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 0.65rem center !important;
+  background-size: 0.85rem !important;
+  padding-left: 0.75rem !important;
+  padding-right: 2rem !important;
+  border-radius: 0.5rem !important;
+  font-family: inherit !important;
+  font-weight: 600 !important;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.dark select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2.5' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E") !important;
+}
+
+select:hover {
+  border-color: #000056 !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 86, 0.08) !important;
+}
+
+.dark select:hover {
+  border-color: #60a5fa !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+}
+
+select:focus {
+  outline: none !important;
+  border-color: #000056 !important;
+  box-shadow: 0 0 0 2px rgba(0, 0, 86, 0.2) !important;
+}
+
+.dark select:focus {
+  border-color: #60a5fa !important;
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.25) !important;
+}
+
+select optgroup {
+  background-color: #f1f5f9 !important;
+  color: #000056 !important;
+  font-weight: 800 !important;
+  font-size: 11px !important;
+  padding: 6px 8px !important;
+  letter-spacing: 0.025em;
+}
+
+.dark select optgroup {
+  background-color: #1e293b !important;
+  color: #93c5fd !important;
+}
+
+select option {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  padding: 8px 12px !important;
+  font-weight: 600 !important;
+  font-size: 12px !important;
+}
+
+.dark select option {
+  background-color: #0f172a !important;
+  color: #f8fafc !important;
+}
+
+select option:checked {
+  background-color: #e0e7ff !important;
+  color: #000056 !important;
+  font-weight: 700 !important;
+}
+
+.dark select option:checked {
+  background-color: #1e3a8a !important;
+  color: #ffffff !important;
+}
+
+select option:disabled {
+  color: #94a3b8 !important;
+  font-style: italic;
+}
+
