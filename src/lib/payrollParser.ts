@@ -42,13 +42,108 @@ export interface PayrollParsedResult {
   teachers: TeacherPayrollSummary[];
 }
 
-function parseDuration(val: any): number {
-  if (typeof val === "number") {
-    if (val > 24) return 0;
-    return Math.round(val * 10) / 10;
+function decodeExcelDateDotMonth(serial: number): number | null {
+  const utcDays = Math.floor(serial) - 25569;
+  const d = new Date(utcDays * 86400 * 1000);
+  const day = d.getUTCDate();
+  const month = d.getUTCMonth() + 1;
+  // If month is 5 (representing .5, e.g. 1.5, 2.5), return day + 0.5
+  if (month === 5 && day >= 1 && day <= 12) {
+    return day + 0.5;
   }
-  const n = parseFloat(val);
-  return isNaN(n) || n > 24 ? 0 : Math.round(n * 10) / 10;
+  return null;
+}
+
+export function parseDuration(val: any, className = "", course = ""): number {
+  if (val === null || val === undefined || val === "") {
+    const courseUpper = course.toUpperCase();
+    const classUpper = className.toUpperCase();
+    if (
+      courseUpper.includes("4+") ||
+      courseUpper.includes("ROB4") ||
+      courseUpper.includes("ART4") ||
+      classUpper.includes("ROB4") ||
+      classUpper.includes("KIND")
+    ) {
+      return 1.5;
+    }
+    return 0;
+  }
+
+  if (typeof val === "number") {
+    if (val > 0 && val <= 24) {
+      return Math.round(val * 10) / 10;
+    }
+    // Direct matches for common Excel serial dates formatted as d.m
+    if (val === 46143) return 1.5; // 01/05/2026 -> 1.5h
+    if (val === 46144) return 2.5; // 02/05/2026 -> 2.5h
+    if (val >= 35000 && val <= 65000) {
+      const decoded = decodeExcelDateDotMonth(val);
+      if (decoded !== null) return decoded;
+    }
+    // Handle floating numbers where export stripped decimal point (e.g. 19833333333333300 -> 1.983 -> 2.0h)
+    if (val > 1e14) {
+      const s = String(val);
+      const normalized = parseFloat(s[0] + "." + s.slice(1));
+      if (!isNaN(normalized) && normalized > 0 && normalized <= 24) {
+        return Math.round(normalized * 10) / 10;
+      }
+    }
+    return 0;
+  }
+
+  const str = String(val).trim().replace(",", ".");
+
+  // Handle formats like "1:30"
+  if (str.includes(":")) {
+    const parts = str.split(":");
+    const h = parseFloat(parts[0]) || 0;
+    const m = parseFloat(parts[1]) || 0;
+    const total = h + m / 60;
+    return total > 0 && total <= 24 ? Math.round(total * 10) / 10 : 0;
+  }
+
+  // Handle formats like "1h30" or "1h30p"
+  if (/^\d+(\.\d+)?h\d*$/i.test(str)) {
+    const parts = str.toLowerCase().split("h");
+    const h = parseFloat(parts[0]) || 0;
+    const m = parseFloat(parts[1]) || 0;
+    const total = h + m / 60;
+    return total > 0 && total <= 24 ? Math.round(total * 10) / 10 : 0;
+  }
+
+  const n = parseFloat(str);
+  if (isNaN(n)) {
+    const courseUpper = course.toUpperCase();
+    const classUpper = className.toUpperCase();
+    if (
+      courseUpper.includes("4+") ||
+      courseUpper.includes("ROB4") ||
+      courseUpper.includes("ART4") ||
+      classUpper.includes("ROB4") ||
+      classUpper.includes("KIND")
+    ) {
+      return 1.5;
+    }
+    return 0;
+  }
+
+  if (n > 0 && n <= 24) return Math.round(n * 10) / 10;
+  if (n === 46143) return 1.5;
+  if (n === 46144) return 2.5;
+  if (n >= 35000 && n <= 65000) {
+    const decoded = decodeExcelDateDotMonth(n);
+    if (decoded !== null) return decoded;
+  }
+  if (n > 1e14) {
+    const s = String(n);
+    const normalized = parseFloat(s[0] + "." + s.slice(1));
+    if (!isNaN(normalized) && normalized > 0 && normalized <= 24) {
+      return Math.round(normalized * 10) / 10;
+    }
+  }
+
+  return 0;
 }
 
 function parseCheckedStatus(val: any): boolean {
@@ -329,18 +424,6 @@ export async function parsePayrollData(
       .toString()
       .trim();
 
-    const duration = parseDuration(
-      row["Slot duration"] || row["Duration"] || row["Số giờ"] || row["Thời lượng"]
-    );
-
-    const type = (
-      row["Type"] ||
-      row["Loại"] ||
-      "CLASS"
-    )
-      .toString()
-      .trim();
-
     const className = (
       row["Class name"] ||
       row["Class Name"] ||
@@ -357,6 +440,20 @@ export async function parsePayrollData(
       row["Khóa học"] ||
       row["Môn học"] ||
       ""
+    )
+      .toString()
+      .trim();
+
+    const duration = parseDuration(
+      row["Slot duration"] || row["Duration"] || row["Số giờ"] || row["Thời lượng"],
+      className,
+      course
+    );
+
+    const type = (
+      row["Type"] ||
+      row["Loại"] ||
+      "CLASS"
     )
       .toString()
       .trim();
