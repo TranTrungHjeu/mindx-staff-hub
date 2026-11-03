@@ -27,6 +27,121 @@ interface PayrollViewProps {
 
 const DEFAULT_TARGET_CENTER = "230ĐLBD";
 
+function renderCenterSessionsBreakdown(
+  t: TeacherPayrollSummary,
+  selectedCenter?: string
+) {
+  const centers = Object.keys(t.centerSessions || {});
+  if (centers.length <= 1) {
+    const singleCenter = centers[0] || t.center;
+    return (
+      <div className="font-mono tabular-nums text-center">
+        <div className="font-bold text-foreground">{t.totalSessions} ca</div>
+        <div className="text-[10px] text-muted-foreground font-normal">({singleCenter})</div>
+      </div>
+    );
+  }
+
+  // Multi-centers: Put selectedCenter or primary center first, then sort by session count desc
+  const sorted = [...centers].sort((a, b) => {
+    if (selectedCenter && a === selectedCenter) return -1;
+    if (selectedCenter && b === selectedCenter) return 1;
+    if (a === t.center) return -1;
+    if (b === t.center) return 1;
+    return (t.centerSessions[b] || 0) - (t.centerSessions[a] || 0);
+  });
+
+  const displayList = sorted.slice(0, 3);
+  const remaining = sorted.slice(3);
+  const remainingSessions = remaining.reduce((acc, c) => acc + (t.centerSessions[c] || 0), 0);
+
+  return (
+    <div className="flex flex-col gap-0.5 text-center font-mono tabular-nums">
+      <div className="space-y-0.5 text-[11px] leading-tight">
+        {displayList.map((c) => {
+          const isCurrent = Boolean(selectedCenter && c === selectedCenter);
+          return (
+            <div
+              key={c}
+              className={`${
+                isCurrent ? "font-bold text-primary" : "text-muted-foreground"
+              } whitespace-nowrap`}
+            >
+              <span>{t.centerSessions[c]} ca</span>{" "}
+              <span className="text-[9.5px]">({c})</span>
+            </div>
+          );
+        })}
+        {remaining.length > 0 && (
+          <div className="text-[9.5px] text-muted-foreground italic">
+            +{remainingSessions} ca ({remaining.length} cơ sở khác)
+          </div>
+        )}
+      </div>
+      <div className="pt-1 mt-0.5 border-t border-border/70 text-[11px] font-extrabold text-foreground whitespace-nowrap">
+        Tổng: {t.totalSessions} ca
+      </div>
+    </div>
+  );
+}
+
+function renderCenterHoursBreakdown(
+  t: TeacherPayrollSummary,
+  selectedCenter?: string
+) {
+  const centers = Object.keys(t.centerHours || {});
+  if (centers.length <= 1) {
+    const singleCenter = centers[0] || t.center;
+    return (
+      <div className="font-mono tabular-nums text-right">
+        <div className="font-bold text-foreground">{t.totalHours}h</div>
+        <div className="text-[10px] text-muted-foreground font-normal">({singleCenter})</div>
+      </div>
+    );
+  }
+
+  const sorted = [...centers].sort((a, b) => {
+    if (selectedCenter && a === selectedCenter) return -1;
+    if (selectedCenter && b === selectedCenter) return 1;
+    if (a === t.center) return -1;
+    if (b === t.center) return 1;
+    return (t.centerHours[b] || 0) - (t.centerHours[a] || 0);
+  });
+
+  const displayList = sorted.slice(0, 3);
+  const remaining = sorted.slice(3);
+  const remainingHours = Math.round(remaining.reduce((acc, c) => acc + (t.centerHours[c] || 0), 0) * 10) / 10;
+
+  return (
+    <div className="flex flex-col gap-0.5 text-right font-mono tabular-nums">
+      <div className="space-y-0.5 text-[11px] leading-tight">
+        {displayList.map((c) => {
+          const isCurrent = Boolean(selectedCenter && c === selectedCenter);
+          return (
+            <div
+              key={c}
+              className={`${
+                isCurrent ? "font-bold text-primary" : "text-muted-foreground"
+              } whitespace-nowrap`}
+            >
+              <span>{t.centerHours[c]}h</span>{" "}
+              <span className="text-[9.5px]">({c})</span>
+            </div>
+          );
+        })}
+        {remaining.length > 0 && (
+          <div className="text-[9.5px] text-muted-foreground italic">
+            +{remainingHours}h ({remaining.length} cơ sở khác)
+          </div>
+        )}
+      </div>
+      <div className="pt-1 mt-0.5 border-t border-border/70 text-[11.5px] font-extrabold text-foreground whitespace-nowrap">
+        Tổng: {t.totalHours}h
+      </div>
+    </div>
+  );
+}
+
 export function PayrollView({ onSwitchToSchedules }: PayrollViewProps) {
   const [r2Files, setR2Files] = useState<R2PayrollFile[]>([]);
   const [activeFile, setActiveFile] = useState<R2PayrollFile | null>(null);
@@ -187,8 +302,15 @@ export function PayrollView({ onSwitchToSchedules }: PayrollViewProps) {
         if (!matchName && !matchEmail && !matchUsername) return false;
       }
 
-      if (selectedCenter && t.center !== selectedCenter) {
-        return false;
+      if (selectedCenter) {
+        const isPrimary = t.center === selectedCenter;
+        const hasSessionsAtCenter =
+          (t.centers && t.centers.includes(selectedCenter)) ||
+          (t.centerHours && (t.centerHours[selectedCenter] || 0) > 0) ||
+          t.sessions.some((s) => s.center === selectedCenter);
+        if (!isPrimary && !hasSessionsAtCenter) {
+          return false;
+        }
       }
 
       if (selectedRole) {
@@ -230,15 +352,25 @@ export function PayrollView({ onSwitchToSchedules }: PayrollViewProps) {
     });
   }, [payrollData, search, selectedCenter, selectedRole, minHoursFilter, statusFilter, checkedSessionMap, sortOrder]);
 
-  // Dynamic KPI Stats based on active filters
+  // Dynamic KPI Stats based on active filters (Scoped to selectedCenter if specified)
   const filteredStats = useMemo(() => {
     const totalTeachers = displayedTeachers.length;
-    const totalHours = displayedTeachers.reduce((acc, t) => acc + t.totalHours, 0);
-    const totalSessions = displayedTeachers.reduce((acc, t) => acc + t.totalSessions, 0);
+    const totalHours = displayedTeachers.reduce((acc, t) => {
+      const h = selectedCenter ? (t.centerHours?.[selectedCenter] || 0) : t.totalHours;
+      return acc + h;
+    }, 0);
+
+    const totalSessions = displayedTeachers.reduce((acc, t) => {
+      const sCount = selectedCenter
+        ? t.sessions.filter((s) => s.center === selectedCenter).length
+        : t.totalSessions;
+      return acc + sCount;
+    }, 0);
 
     let checkedSessionsTotal = 0;
     displayedTeachers.forEach((t) => {
       t.sessions.forEach((s) => {
+        if (selectedCenter && s.center !== selectedCenter) return;
         if (checkedSessionMap[s.id]) checkedSessionsTotal += 1;
       });
     });
@@ -249,7 +381,7 @@ export function PayrollView({ onSwitchToSchedules }: PayrollViewProps) {
       totalSessions,
       checkedSessionsTotal,
     };
-  }, [displayedTeachers, checkedSessionMap]);
+  }, [displayedTeachers, checkedSessionMap, selectedCenter]);
 
   return (
     <div className="flex flex-col h-screen w-full overflow-hidden bg-background text-foreground">
@@ -378,8 +510,20 @@ export function PayrollView({ onSwitchToSchedules }: PayrollViewProps) {
                   </div>
                 ) : (
                   displayedTeachers.map((t, idx) => {
-                    const totalSessionsCount = t.sessions.length;
-                    const checkedSessionsCount = t.sessions.filter((s) => checkedSessionMap[s.id]).length;
+                    const hasMultiCenters = (t.centers?.length || 1) > 1;
+
+                    const sessionsAtCenter = selectedCenter
+                      ? t.sessions.filter((s) => s.center === selectedCenter).length
+                      : t.totalSessions;
+                    const hoursAtCenter = selectedCenter
+                      ? (t.centerHours?.[selectedCenter] || 0)
+                      : t.totalHours;
+
+                    const checkedSessionsCount = selectedCenter
+                      ? t.sessions.filter((s) => s.center === selectedCenter && checkedSessionMap[s.id]).length
+                      : t.sessions.filter((s) => checkedSessionMap[s.id]).length;
+
+                    const totalSessionsCount = sessionsAtCenter;
                     const isFullyChecked = totalSessionsCount > 0 && checkedSessionsCount === totalSessionsCount;
                     const isPartiallyChecked = checkedSessionsCount > 0 && checkedSessionsCount < totalSessionsCount;
 
@@ -402,13 +546,16 @@ export function PayrollView({ onSwitchToSchedules }: PayrollViewProps) {
                             </div>
                           </div>
 
-                          <span className="px-2 py-0.5 rounded-md bg-muted/80 text-foreground font-semibold text-[10.5px] border border-border/60 shrink-0">
-                            {t.center}
-                          </span>
+                          <div className="flex flex-col items-end gap-1 shrink-0">
+                            <span className="px-2 py-0.5 rounded-md bg-muted/80 text-foreground font-semibold text-[10.5px] border border-border/60">
+                              {t.center}
+                            </span>
+                          </div>
                         </div>
 
-                        {/* Hours & Role Badges */}
-                        <div className="flex items-center justify-between text-xs pt-1 border-t border-border/50">
+                        {/* Hours & Sessions Breakdown by Center (Chi tiết mấy ca ở đâu, xong ở dưới mới tổng) */}
+                        <div className="pt-2 border-t border-border/50 text-xs space-y-1.5">
+                          {/* Role badges */}
                           <div className="flex items-center gap-1.5 flex-wrap">
                             {Object.entries(t.roles).map(([r, hours]) => (
                               <span
@@ -420,16 +567,38 @@ export function PayrollView({ onSwitchToSchedules }: PayrollViewProps) {
                             ))}
                           </div>
 
-                          <div className="text-right shrink-0">
-                            <span className="text-sm font-extrabold font-mono text-foreground">{t.totalHours}h</span>
-                            <span className="text-[10px] text-muted-foreground block font-mono">({t.totalSessions} ca)</span>
+                          {/* Chi tiết từng cơ sở mấy ca, mấy giờ */}
+                          <div className="bg-muted/25 p-2 rounded-xl border border-border/60 space-y-1 text-[11px] font-mono tabular-nums">
+                            {hasMultiCenters ? (
+                              <>
+                                <div className="space-y-0.5">
+                                  {Object.keys(t.centerSessions || {}).map((c) => (
+                                    <div key={c} className="flex items-center justify-between text-muted-foreground">
+                                      <span>• Cơ sở {c}:</span>
+                                      <span className="font-bold text-foreground">
+                                        {t.centerSessions[c]} ca ({t.centerHours?.[c] || 0}h)
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                                <div className="pt-1 mt-0.5 border-t border-border/60 flex items-center justify-between font-extrabold text-foreground">
+                                  <span>Tổng cộng:</span>
+                                  <span className="text-primary">{t.totalSessions} ca • {t.totalHours}h</span>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="flex items-center justify-between font-bold text-foreground">
+                                <span>Khối lượng:</span>
+                                <span>{t.totalSessions} ca ({t.totalHours}h)</span>
+                              </div>
+                            )}
                           </div>
                         </div>
 
                         {/* Bottom Actions Row */}
                         <div className="flex items-center justify-between gap-2 pt-1">
                           <div
-                            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold border ${
+                            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold font-mono tabular-nums border ${
                               isFullyChecked
                                 ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
                                 : isPartiallyChecked
@@ -550,8 +719,20 @@ export function PayrollView({ onSwitchToSchedules }: PayrollViewProps) {
                         </tr>
                       ) : (
                         displayedTeachers.map((t, idx) => {
-                          const totalSessionsCount = t.sessions.length;
-                          const checkedSessionsCount = t.sessions.filter((s) => checkedSessionMap[s.id]).length;
+                          const hasMultiCenters = (t.centers?.length || 1) > 1;
+
+                          const sessionsAtCenter = selectedCenter
+                            ? t.sessions.filter((s) => s.center === selectedCenter).length
+                            : t.totalSessions;
+                          const hoursAtCenter = selectedCenter
+                            ? (t.centerHours?.[selectedCenter] || 0)
+                            : t.totalHours;
+
+                          const checkedSessionsCount = selectedCenter
+                            ? t.sessions.filter((s) => s.center === selectedCenter && checkedSessionMap[s.id]).length
+                            : t.sessions.filter((s) => checkedSessionMap[s.id]).length;
+
+                          const totalSessionsCount = sessionsAtCenter;
                           const isFullyChecked = totalSessionsCount > 0 && checkedSessionsCount === totalSessionsCount;
                           const isPartiallyChecked = checkedSessionsCount > 0 && checkedSessionsCount < totalSessionsCount;
 
@@ -561,7 +742,7 @@ export function PayrollView({ onSwitchToSchedules }: PayrollViewProps) {
                               onClick={() => setSelectedTeacher(t)}
                               className="hover:bg-primary/5 transition-colors cursor-pointer group"
                             >
-                              <td className="p-3.5 text-center font-mono font-bold text-muted-foreground sticky left-0 z-10 bg-card group-hover:bg-primary/5 transition-colors border-r border-border">
+                              <td className="p-3.5 text-center font-mono tabular-nums font-bold text-muted-foreground sticky left-0 z-10 bg-card group-hover:bg-primary/5 transition-colors border-r border-border">
                                 {idx + 1}
                               </td>
 
@@ -582,13 +763,20 @@ export function PayrollView({ onSwitchToSchedules }: PayrollViewProps) {
                               </td>
 
                               <td className="p-3.5">
-                                <span className="px-2.5 py-1 rounded-lg bg-muted/60 text-foreground font-semibold text-[11px] border border-border/60">
-                                  {t.center}
-                                </span>
+                                <div className="flex flex-col gap-1 items-start">
+                                  <span className="px-2.5 py-1 rounded-lg bg-muted/60 text-foreground font-semibold text-[11px] border border-border/60">
+                                    {t.center}
+                                  </span>
+                                  {hasMultiCenters && (
+                                    <span className="text-[9.5px] text-muted-foreground font-mono">
+                                      +{t.centers.length - 1} cơ sở
+                                    </span>
+                                  )}
+                                </div>
                               </td>
 
-                              <td className="p-3.5 text-center font-mono font-bold text-foreground">
-                                {t.totalSessions} ca
+                              <td className="p-3.5 text-center">
+                                {renderCenterSessionsBreakdown(t, selectedCenter)}
                               </td>
 
                               <td className="p-3.5">
@@ -596,7 +784,7 @@ export function PayrollView({ onSwitchToSchedules }: PayrollViewProps) {
                                   {Object.entries(t.roles).map(([r, hours]) => (
                                     <span
                                       key={r}
-                                      className="px-2 py-0.5 rounded-md text-[10.5px] font-semibold font-mono bg-muted/80 text-foreground border border-border/70"
+                                      className="px-2 py-0.5 rounded-md text-[10.5px] font-semibold font-mono tabular-nums bg-muted/80 text-foreground border border-border/70"
                                     >
                                       {r}: {hours}h
                                     </span>
@@ -604,13 +792,13 @@ export function PayrollView({ onSwitchToSchedules }: PayrollViewProps) {
                                 </div>
                               </td>
 
-                              <td className="p-3.5 text-right font-mono font-bold text-sm text-foreground">
-                                {t.totalHours}h
+                              <td className="p-3.5 text-right">
+                                {renderCenterHoursBreakdown(t, selectedCenter)}
                               </td>
 
                               <td className="p-3.5 text-center">
                                 <span
-                                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-semibold border shadow-2xs ${
+                                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-semibold font-mono tabular-nums border shadow-2xs ${
                                     isFullyChecked
                                       ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25"
                                       : isPartiallyChecked
@@ -670,6 +858,7 @@ export function PayrollView({ onSwitchToSchedules }: PayrollViewProps) {
         teacher={selectedTeacher}
         onClose={() => setSelectedTeacher(null)}
         checkedSessionMap={checkedSessionMap}
+        activeCenter={selectedCenter}
       />
     </div>
   );

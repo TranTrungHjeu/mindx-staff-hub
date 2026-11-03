@@ -19,7 +19,10 @@ export interface TeacherPayrollSummary {
   name: string;
   email: string;
   username: string;
-  center: string;
+  center: string; // Cơ sở chính (Primary / Dominant BU)
+  centers: string[]; // Danh sách tất cả các cơ sở GV có ca dạy trong kỳ
+  centerHours: Record<string, number>; // Số giờ dạy phân bổ theo từng cơ sở
+  centerSessions: Record<string, number>; // Số ca dạy phân bổ theo từng cơ sở
   totalHours: number;
   totalSessions: number;
   roles: Record<string, number>;
@@ -404,7 +407,10 @@ export async function parsePayrollData(
         name,
         email,
         username,
-        center,
+        center: center || "Cơ sở khác",
+        centers: [],
+        centerHours: {},
+        centerSessions: {},
         totalHours: 0,
         totalSessions: 0,
         roles: {},
@@ -417,6 +423,11 @@ export async function parsePayrollData(
     t.totalSessions += 1;
     t.roles[role] = (t.roles[role] || 0) + duration;
 
+    // Track per-center statistics
+    const sessionCenter = center || "Cơ sở khác";
+    t.centerHours[sessionCenter] = Math.round(((t.centerHours[sessionCenter] || 0) + duration) * 10) / 10;
+    t.centerSessions[sessionCenter] = (t.centerSessions[sessionCenter] || 0) + 1;
+
     t.sessions.push({
       id: `s_${idx}`,
       date: slotTime,
@@ -427,15 +438,57 @@ export async function parsePayrollData(
       duration,
       studentCount,
       note,
-      center,
+      center: sessionCenter,
       isChecked,
     });
   });
 
-  const teachersList = Object.values(teacherMap).map((t) => ({
-    ...t,
-    totalHours: Math.round(t.totalHours * 10) / 10,
-  }));
+  const defaultHubCenter =
+    (typeof import.meta !== "undefined" && import.meta.env?.VITE_DEFAULT_CENTER_NAME) || "230ĐLBD";
+
+  const teachersList = Object.values(teacherMap).map((t) => {
+    const centersArr = Object.keys(t.centerHours);
+    t.centers = centersArr;
+
+    // Smart Primary Center Inference:
+    // Rule 1: Priority for configured Hub Center (e.g. 230ĐLBD) if teacher has active sessions there
+    const hubHours = t.centerHours[defaultHubCenter] || 0;
+    let primaryCenter = t.center;
+
+    if (hubHours >= 8) {
+      primaryCenter = defaultHubCenter;
+    } else {
+      // Rule 2: Prefer Offline centers over Online centers (since Online is usually cross-coverage)
+      const offlineCenters = centersArr.filter(
+        (c) => !c.toLowerCase().includes("online") && !c.toLowerCase().includes("onl")
+      );
+      const candidateCenters = offlineCenters.length > 0 ? offlineCenters : centersArr;
+
+      let maxHours = -1;
+      let dominantCenter = candidateCenters[0] || t.center;
+
+      candidateCenters.forEach((c) => {
+        const h = t.centerHours[c] || 0;
+        if (h > maxHours) {
+          maxHours = h;
+          dominantCenter = c;
+        }
+      });
+
+      // If hub center is among top offline centers, still prioritize it
+      if (hubHours > 0 && hubHours >= maxHours * 0.4) {
+        primaryCenter = defaultHubCenter;
+      } else {
+        primaryCenter = dominantCenter;
+      }
+    }
+
+    return {
+      ...t,
+      center: primaryCenter,
+      totalHours: Math.round(t.totalHours * 10) / 10,
+    };
+  });
 
   teachersList.sort((a, b) => b.totalHours - a.totalHours);
 

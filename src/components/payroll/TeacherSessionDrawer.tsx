@@ -7,11 +7,12 @@ import {
   CheckCircle2,
   Circle,
   Search,
-  BookOpen,
   CheckSquare,
   Copy,
   Check,
   Filter,
+  Building2,
+  Layers,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,17 +34,28 @@ interface TeacherSessionDrawerProps {
   teacher: TeacherPayrollSummary | null;
   onClose: () => void;
   checkedSessionMap?: Record<string, boolean>;
+  activeCenter?: string;
 }
 
 export function TeacherSessionDrawer({
   teacher,
   onClose,
   checkedSessionMap = {},
+  activeCenter = "",
 }: TeacherSessionDrawerProps) {
   const [drawerSearch, setDrawerSearch] = useState("");
   const [drawerStatusFilter, setDrawerStatusFilter] = useState<"all" | "checked" | "unchecked">("all");
   const [drawerCategoryFilter, setDrawerCategoryFilter] = useState<string>("all");
+  const [drawerCenterFilter, setDrawerCenterFilter] = useState<string>("all");
   const [copiedSessionId, setCopiedSessionId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (activeCenter && teacher?.centers?.includes(activeCenter)) {
+      setDrawerCenterFilter(activeCenter);
+    } else {
+      setDrawerCenterFilter("all");
+    }
+  }, [teacher, activeCenter]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -54,6 +66,12 @@ export function TeacherSessionDrawer({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
+
+  const teacherCenters = useMemo(() => {
+    if (!teacher) return [];
+    if (teacher.centers && teacher.centers.length > 0) return teacher.centers;
+    return Array.from(new Set(teacher.sessions.map((s) => s.center || teacher.center))).filter(Boolean);
+  }, [teacher]);
 
   const categoryStats = useMemo(() => {
     const map: Record<string, number> = {
@@ -69,21 +87,29 @@ export function TeacherSessionDrawer({
     if (!teacher?.sessions) return map;
 
     teacher.sessions.forEach((s) => {
+      if (drawerCenterFilter !== "all" && (s.center || teacher.center) !== drawerCenterFilter) {
+        return;
+      }
       const cat = getSessionCategory(s);
       map[cat] = Math.round(((map[cat] || 0) + s.duration) * 10) / 10;
     });
 
     return map;
-  }, [teacher?.sessions]);
+  }, [teacher?.sessions, drawerCenterFilter, teacher?.center]);
 
   if (!teacher) return null;
 
-  const totalSessions = teacher.sessions.length;
-  const checkedSessionsCount = teacher.sessions.filter((s) => checkedSessionMap[s.id]).length;
+  // Active pool of sessions based on center filter
+  const poolSessions = drawerCenterFilter === "all"
+    ? teacher.sessions
+    : teacher.sessions.filter((s) => (s.center || teacher.center) === drawerCenterFilter);
+
+  const totalSessions = poolSessions.length;
+  const checkedSessionsCount = poolSessions.filter((s) => checkedSessionMap[s.id]).length;
   const uncheckedSessionsCount = totalSessions - checkedSessionsCount;
   const isFullyChecked = totalSessions > 0 && checkedSessionsCount === totalSessions;
 
-  const filteredSessions = teacher.sessions.filter((s) => {
+  const filteredSessions = poolSessions.filter((s) => {
     const isSessionChecked = Boolean(checkedSessionMap[s.id]);
     if (drawerStatusFilter === "checked" && !isSessionChecked) return false;
     if (drawerStatusFilter === "unchecked" && isSessionChecked) return false;
@@ -100,7 +126,8 @@ export function TeacherSessionDrawer({
       s.course?.toLowerCase().includes(q) ||
       s.date?.toLowerCase().includes(q) ||
       s.role?.toLowerCase().includes(q) ||
-      s.note?.toLowerCase().includes(q)
+      s.note?.toLowerCase().includes(q) ||
+      (s.center || "").toLowerCase().includes(q)
     );
   });
 
@@ -131,69 +158,138 @@ ${s.note ? `• Ghi chú: ${s.note}` : ""}`;
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-2xl bg-card border-l border-border h-[100dvh] max-h-[100dvh] flex flex-col shadow-2xl animate-drawer-panel"
       >
-        {/* Drawer Header */}
-        <div className="p-4 sm:p-6 bg-slate-900 text-slate-100 border-b border-slate-800 flex items-start justify-between gap-3">
-          <div className="space-y-1.5 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="px-2.5 py-0.5 rounded-md bg-slate-800 border border-slate-700 text-slate-300 text-[11px] font-semibold">
-                {teacher.center || "Cơ sở MindX"}
-              </span>
-              <span className="px-2.5 py-0.5 rounded-md bg-slate-800 border border-slate-700 text-slate-200 text-[11px] font-bold font-mono">
-                {teacher.totalHours}h ({teacher.totalSessions} ca)
-              </span>
-
-              <span
-                className={`px-2.5 py-0.5 rounded-md text-[11px] font-semibold flex items-center gap-1 border ${
-                  isFullyChecked
-                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-                    : checkedSessionsCount > 0
-                    ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
-                    : "bg-slate-800 text-slate-300 border-slate-700"
-                }`}
-              >
-                {isFullyChecked ? (
-                  <>
-                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-                    <span>Checked ({checkedSessionsCount}/{totalSessions})</span>
-                  </>
-                ) : checkedSessionsCount > 0 ? (
-                  <>
-                    <CheckSquare className="h-3.5 w-3.5 text-amber-400" />
-                    <span>Checked ({checkedSessionsCount}/{totalSessions})</span>
-                  </>
-                ) : (
-                  <>
-                    <Circle className="h-3.5 w-3.5 opacity-60" />
-                    <span>Unchecked (0/{totalSessions})</span>
-                  </>
-                )}
-              </span>
+        {/* Drawer Header (Synchronized Theme with Dark/Light Support) */}
+        <div className="p-4 sm:p-5 bg-card/95 border-b border-border flex items-start justify-between gap-3 backdrop-blur-md">
+          <div className="flex items-start gap-3 min-w-0">
+            <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-2xl bg-primary/10 text-primary border border-primary/20 flex items-center justify-center font-black text-base font-mono shrink-0 shadow-2xs">
+              {teacher.name.charAt(0).toUpperCase()}
             </div>
-            <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight truncate">{teacher.name}</h2>
-            <p className="text-xs text-slate-400 font-mono truncate">
-              {teacher.email || teacher.username || "Chưa có email"}
-            </p>
+
+            <div className="space-y-1 min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                <span className="px-2.5 py-0.5 rounded-lg bg-muted text-foreground border border-border text-[11px] font-bold font-mono">
+                  {teacher.center || "Cơ sở MindX"}
+                </span>
+
+                {teacherCenters.length > 1 && (
+                  <span className="px-2 py-0.5 rounded-lg bg-primary/10 text-primary border border-primary/20 text-[10.5px] font-bold">
+                    {teacherCenters.length} cơ sở
+                  </span>
+                )}
+
+                <span className="px-2 py-0.5 rounded-lg bg-muted text-foreground border border-border text-[11px] font-mono font-extrabold">
+                  {teacher.totalHours}h ({teacher.totalSessions} ca)
+                </span>
+              </div>
+
+              <h2 className="text-base sm:text-lg font-extrabold text-foreground tracking-tight truncate">
+                {teacher.name}
+              </h2>
+              <p className="text-xs text-muted-foreground font-mono truncate">
+                {teacher.email || teacher.username || "Chưa cập nhật email"}
+              </p>
+            </div>
           </div>
 
           <Button
             variant="ghost"
             size="icon"
             onClick={onClose}
-            className="text-slate-400 hover:text-white hover:bg-slate-800 active:scale-90 transition-all rounded-xl h-8 w-8 shrink-0"
+            className="text-muted-foreground hover:text-foreground hover:bg-muted active:scale-95 transition-all rounded-xl h-8 w-8 shrink-0 border border-transparent hover:border-border"
           >
             <X className="h-4 w-4" />
           </Button>
         </div>
 
+        {/* Multi-Center Professional Hub (When Teacher taught in >= 2 Centers) */}
+        {teacherCenters.length > 1 && (
+          <div className="px-4 sm:px-6 py-2.5 bg-muted/15 border-b border-border/70 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[10.5px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                <Building2 className="h-3.5 w-3.5 text-primary" />
+                Lọc nhanh theo cơ sở giảng dạy ({teacherCenters.length} cơ sở):
+              </span>
+              <span className="text-[10px] text-muted-foreground font-mono">
+                {drawerCenterFilter === "all" ? "Tất cả cơ sở" : `Cơ sở ${drawerCenterFilter}`}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {/* Option: Tất cả */}
+              <button
+                type="button"
+                onClick={() => setDrawerCenterFilter("all")}
+                className={`p-2 rounded-xl border text-left transition-all duration-200 cursor-pointer flex flex-col gap-0.5 ${
+                  drawerCenterFilter === "all"
+                    ? "bg-primary/10 border-primary text-primary shadow-xs ring-1 ring-primary/30"
+                    : "bg-card border-border/80 hover:border-primary/40 text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[11.5px] font-bold flex items-center gap-1 truncate">
+                    <Layers className="h-3.5 w-3.5 shrink-0" />
+                    Tất cả cơ sở
+                  </span>
+                  <span className="text-[10.5px] font-mono font-extrabold">
+                    {teacher.totalHours}h
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-[10px] font-mono opacity-80">
+                  <span>{teacher.totalSessions} ca</span>
+                  <span>{teacher.sessions.filter(s => checkedSessionMap[s.id]).length}/{teacher.totalSessions} ✓</span>
+                </div>
+              </button>
+
+              {/* Option: Từng cơ sở */}
+              {teacherCenters.map((c) => {
+                const sCount = teacher.centerSessions?.[c] || teacher.sessions.filter((s) => (s.center || teacher.center) === c).length;
+                const hCount = teacher.centerHours?.[c] || 0;
+                const cChecked = teacher.sessions.filter((s) => (s.center || teacher.center) === c && checkedSessionMap[s.id]).length;
+                const isCenterFullyChecked = sCount > 0 && cChecked === sCount;
+                const isCenterActive = drawerCenterFilter === c;
+
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setDrawerCenterFilter(c)}
+                    className={`p-2 rounded-xl border text-left transition-all duration-200 cursor-pointer flex flex-col gap-0.5 ${
+                      isCenterActive
+                        ? "bg-primary/10 border-primary text-primary shadow-xs ring-1 ring-primary/30"
+                        : "bg-card border-border/80 hover:border-primary/40 text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11.5px] font-bold truncate flex items-center gap-1">
+                        <Building2 className="h-3.5 w-3.5 shrink-0" />
+                        {c}
+                      </span>
+                      <span className="text-[10.5px] font-mono font-extrabold">
+                        {hCount}h
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] font-mono">
+                      <span>{sCount} ca</span>
+                      <span className={isCenterFullyChecked ? "text-emerald-600 dark:text-emerald-400 font-bold" : "opacity-80"}>
+                        {cChecked}/{sCount} ✓
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Roles & Categories Breakdown Summary Bar */}
-        <div className="px-4 sm:px-6 py-2.5 bg-muted/40 border-b border-border/80 flex items-center flex-wrap gap-2 text-xs font-medium">
-          <span className="text-muted-foreground mr-1">Phân bổ loại ca:</span>
+        <div className="px-4 sm:px-6 py-2 bg-muted/40 border-b border-border/80 flex items-center flex-wrap gap-1.5 text-xs font-medium">
+          <span className="text-muted-foreground mr-1 text-[11px]">Phân bổ:</span>
           {Object.entries(categoryStats)
             .filter(([_, hours]) => hours > 0)
             .map(([cat, hours]) => (
               <span
                 key={cat}
-                className="px-2 py-0.5 rounded-md text-[11px] font-semibold font-mono bg-background border border-border text-foreground"
+                className="px-2 py-0.5 rounded-md text-[10.5px] font-semibold font-mono bg-background border border-border text-foreground"
               >
                 {cat}: {hours}h
               </span>
@@ -201,7 +297,7 @@ ${s.note ? `• Ghi chú: ${s.note}` : ""}`;
         </div>
 
         {/* Search Bar & Status Filter Pills inside Drawer */}
-        <div className="px-4 sm:px-6 pt-4 pb-2 space-y-2.5">
+        <div className="px-4 sm:px-6 pt-3 pb-2 space-y-2">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -224,7 +320,7 @@ ${s.note ? `• Ghi chú: ${s.note}` : ""}`;
                   </div>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Tất cả loại ca ({teacher.sessions.length})</SelectItem>
+                  <SelectItem value="all">Tất cả loại ca ({totalSessions})</SelectItem>
                   <SelectItem value="TA">TA (Trợ Giảng: {categoryStats.TA || 0}h)</SelectItem>
                   <SelectItem value="LEC">LEC (Giảng Viên: {categoryStats.LEC || 0}h)</SelectItem>
                   <SelectItem value="Judge">Judge (Giám Khảo: {categoryStats.Judge || 0}h)</SelectItem>
@@ -237,7 +333,7 @@ ${s.note ? `• Ghi chú: ${s.note}` : ""}`;
             </div>
           </div>
 
-          {/* Sub Filter Tabs */}
+          {/* Sub Filter Status Tabs */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
             <button
               type="button"
@@ -317,6 +413,9 @@ ${s.note ? `• Ghi chú: ${s.note}` : ""}`;
                         </span>
                         <span className="text-xs font-bold text-foreground font-mono truncate">
                           {s.className}
+                        </span>
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground border border-border/60 shrink-0">
+                          {s.center || teacher.center}
                         </span>
                       </div>
 
